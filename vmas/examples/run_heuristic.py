@@ -77,7 +77,7 @@ if __name__ == "__main__":
         scenario_name="transport",
         heuristic=TransportHeuristic,
         n_envs=300,
-        n_steps=200,
+        n_steps=1000,
         render=True,
         save_render=False,
     )

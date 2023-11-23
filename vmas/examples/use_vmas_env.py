@@ -12,7 +12,7 @@ from vmas.simulator.utils import save_video
 def use_vmas_env(render: bool = False, save_render: bool = False):
     assert not (save_render and not render), "To save the video you have to render it"
 
-    scenario_name = "waterfall"
+    scenario_name = "single_agent_scenario"
 
     # Scenario specific variables
     n_agents = 4
@@ -20,7 +20,7 @@ def use_vmas_env(render: bool = False, save_render: bool = False):
     num_envs = 32  # Number of vectorized environments
     continuous_actions = False
     device = "cpu"  # or cuda or any other torch device
-    n_steps = 100  # Number of steps before returning done
+    n_steps = 500  # Number of steps before returning done
     dict_spaces = True  # Weather to return obs, rewards, and infos as dictionaries with agent names
     # (by default they are lists of len # of agents)
 
