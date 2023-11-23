@@ -4,9 +4,6 @@ from vmas.simulator.core import Agent, World, Sphere
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.utils import TorchUtils
 
-# To run the scenario interactively, I need to import the make_env function
-from vmas import make_env
-import pygame
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
@@ -30,7 +27,8 @@ class Scenario(BaseScenario):
     def reward(self, agent: Agent):
         # Reward based on the distance to the goal
         distance_to_goal = torch.norm(agent.state.pos - self.goal_pos)
-        return -distance_to_goal
+        return -distance_to_goal.unsqueeze(0)  # Ensure the reward is at least 1D
+    
 
     def observation(self, agent: Agent):
         # Expand the goal position to match the batch dimension
@@ -52,6 +50,11 @@ class SimplePolicy:
         return action
 
 """
+# To run the scenario interactively, I need to import the make_env function
+from vmas import make_env
+import pygame
+
+
 # trying to render the scenario interactively
 if __name__ == "__main__":
     # Initialize the environment 
@@ -71,9 +74,29 @@ if __name__ == "__main__":
                 
 """
 
+'''
+# run the scenario interactively for Centain time
+import time
+if __name__ == "__main__":
+    start_time = time.time()
+    while time.time() - start_time < 60:  # Run for 60 seconds
+        try:
+            render_interactively(
+                __file__,
+                control_one_agents=True,
+                desired_velocity=0.05,
+                n_agents=1,
+                with_line=False,
+                with_goal=True,
+            )
+        except KeyboardInterrupt:
+            break
+'''
+
 if __name__ == "__main__":
     render_interactively(
         __file__,
         desired_velocity=0.05,
         n_agents=1,
     )
+                
