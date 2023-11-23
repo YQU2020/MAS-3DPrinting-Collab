@@ -50,18 +50,11 @@ class SimplePolicy:
         # Here I compute action as direction vector towards the goal, scaled by u_range
         action = torch.clamp(goal_pos - pos_agent, min=-u_range, max=u_range)
         return action
-"""
-if __name__ == "__main__":
-    render_interactively(
-        __file__
-        
-    )
-    
-"""
 
 """
+# trying to render the scenario interactively
 if __name__ == "__main__":
-    # Initialize the environment with your scenario
+    # Initialize the environment 
     env = make_env(scenario=Scenario, num_envs=1, device="cpu")
     obs = env.reset()
 
@@ -71,7 +64,7 @@ if __name__ == "__main__":
         # Render the current state of the environment
         render_interactively(env)
 
-        # Check for quit event to close the window
+        # Check for quit event
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False

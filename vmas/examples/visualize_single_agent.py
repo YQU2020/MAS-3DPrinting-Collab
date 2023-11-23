@@ -1,18 +1,36 @@
 import torch
-from vmas.simulator import VMASEnv
-from vmas.scenarios.single_agent_scenario import SingleAgentScenario
-
+from vmas import make_env, render_interactively
+from single_agent_scenario import Scenario, SimplePolicy
 
 def main():
-    device = "cpu"
-    env = VMASEnv(SingleAgentScenario, device=device, render=True, batch_dim=1)
+    # Initialize the environment with the Single Agent Scenario
+    env = make_env(scenario=Scenario(), num_envs=1, device="cpu")
+    obs = env.reset()
 
-    for _ in range(1000):  # Number of steps to simulate
-        action = torch.tensor([[0.5, 0.5]], device=device)  # Example action, adjust as needed
-        env.step(action)
+    # Initialize the own policy
+    policy = SimplePolicy()
 
-        if env.done().any():
-            env.reset()
+    # Main loop 
+    running = True
+    while running:
+        try:
+            # Compute action based on the current observation
+            action = policy.compute_action(obs, env.action_space.high[0])
+
+            # Take a step in the environment
+            obs, rewards, done, info = env.step(action)
+
+            # Render the current state of the environment
+            render_interactively(env)
+
+            # Check if the episode is done
+            if done.any():
+                obs = env.reset()
+
+        except KeyboardInterrupt:
+            # Stop t
+            running = False
 
 if __name__ == "__main__":
     main()
+
