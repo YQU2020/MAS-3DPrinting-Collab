@@ -23,7 +23,7 @@ class SimplePolicy(BaseHeuristicPolicy):
         return action
 
 # trying to render the scenario 
-def run_single_agent(
+def run_heuristic(
     scenario_name: str,
     heuristic: Type[BaseHeuristicPolicy] = SimplePolicy,
     n_steps: int = 200,
@@ -86,7 +86,7 @@ def run_single_agent(
    
 
 if __name__ == "__main__":
-    run_single_agent(
+    run_heuristic(
         scenario_name="single_agent_scenario",  
         heuristic=SimplePolicy,
         n_envs=1,       
