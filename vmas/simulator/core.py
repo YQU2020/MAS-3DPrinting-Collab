@@ -731,6 +731,15 @@ class Landmark(Entity):
             collision_filter,
         )
 
+#---------------------------------------------------------------------------------------------
+
+# Add this new class for Trail Points
+class TrailPoint:
+    def __init__(self, position):
+        self.position = position
+        self.next_point = None
+
+#---------------------------------------------------------------------------------------------
 
 # properties of agent entities
 class Agent(Entity):
@@ -830,7 +839,39 @@ class Agent(Entity):
         )
         # state
         self._state = AgentState()
+        
+        #*****************************************************************************************
+        # trail points
+        self.trail_active = False
+        self.trail_points = None
+        self.last_point = None
+        self.trail_distance = 0.1  # Default distance for laying new points
+        #*****************************************************************************************
+        
+    #---------------------------------------------------------------------------------------------
+    def start_trail(self):
+        self.trail_active = True
+        self.trail_points = TrailPoint(self.state.pos)  # Assuming 'state.pos' is the current position of the agent
+        self.last_point = self.trail_points
 
+    def stop_trail(self):
+        self.trail_active = False
+
+    def update_trail(self):
+        if self.trail_active and self.distance_from_last_point() >= self.trail_distance:
+            new_point = TrailPoint(self.state.pos)
+            self.last_point.next_point = new_point
+            self.last_point = new_point
+
+    def distance_from_last_point(self):
+        # Implement logic to calculate distance from the last point
+        # Assuming 'state.pos' is the current position of the agent
+        if self.last_point is None:
+            return float('inf')
+        return torch.norm(self.state.pos - self.last_point.position)
+    
+    #---------------------------------------------------------------------------------------------
+    
     def add_sensor(self, sensor: Sensor):
         sensor.agent = self
         self._sensors.append(sensor)
