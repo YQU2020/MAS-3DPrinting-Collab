@@ -59,6 +59,10 @@ def run_single_agent(
     for s in range(n_steps):
         step += 1
         actions = [None] * len(obs)
+        print("********************************************************************************************************************")
+        print(f"Step: {step}")
+        print(f"Number of agents in environment: {len(obs)}, Number of actions before: {len(actions)}")
+        print(f"Agent position: {obs[0][0]}")
         for i in range(len(obs)):
             actions[i] = policy.compute_action(obs[i], u_range=env.agents[i].u_range)
         obs, rews, dones, info = env.step(actions)
@@ -90,7 +94,7 @@ if __name__ == "__main__":
         scenario_name="single_agent_scenario",  
         heuristic=SimplePolicy,
         n_envs=1,       
-        n_steps=200,    # run the environment in 200 steps (changeable)
+        n_steps=50,    # run the environment in certain steps (changeable)
         render=True,
         save_render=False,
     )
