@@ -48,13 +48,70 @@ def run_twin_tracking(
     
     last_position = None
     trail_interval = 10  # Number of steps after which to add a static agent
-
+    
+    
+    iteration_since_first_two_actions = 0
+    has_two_actions_occurred = False
+    drop_time = 1
+    
     for s in range(n_steps):
         step += 1
-        actions = [None] * len(obs)
-        for i in range(len(obs)):
-            actions[i] = policy.compute_action(obs[i], u_range=env.agents[i].u_range)
+        print("********************************************************************************************************************")
+        print(f"Step: {step}")
+        
+        # Check the current number of agents
+        num_agents = len(env.world.agents)
+        actions = [None] * num_agents
+        print(f"Number of agents in environment: {num_agents}, Number of actions before: {len(actions)}")
+        
+        # Check if the number of actions is 2 and update the flag
+        if len(actions) == 2 and not has_two_actions_occurred:
+            has_two_actions_occurred = True
+
+        # Increment the counter if the flag is true
+        if has_two_actions_occurred:
+            iteration_since_first_two_actions += 1
+            
+        main_agent_pos = env.world.agents[0].state.pos
+        goal_pos = twin_scenario.goal_pos  # Access the goal position from the scenario instance
+        print(f"Main agent position: {main_agent_pos[0]}, Goal position: {goal_pos}")
+        
+        distance_to_goal = torch.norm(main_agent_pos - goal_pos)
+        print(f"Distance to goal: {distance_to_goal}")
+        
+        if distance_to_goal < 1e-6:  # some_threshold is a small value
+            print("Main agent has reached the goal position. Terminating simulation.")
+            break  # Terminate the simulation
+        
+        # Increment drop_time every "trail_interval" iterations after the first occurrence
+        print(f"iteration_since_first_two_actions: {iteration_since_first_two_actions}")
+        if iteration_since_first_two_actions > 0 and iteration_since_first_two_actions % trail_interval == 0:
+            drop_time += 1
+            
+        while len(actions) > 1:
+            actions.pop(0)  # Remove the static agent
+            
+        
+        # Generate action only for the main agent
+        main_agent = env.world.agents[0]
+        main_agent_action = policy.compute_action(obs[0], u_range=main_agent.u_range)
+        print(f"Main agent action: {main_agent_action[0]}, u_range: {main_agent.u_range}")
+        for i, agent in enumerate(env.world.agents):
+            # Initialize the action tensor with the correct shape
+            if agent.action.u is None:
+                agent.action.u = torch.zeros((300, 2), dtype=torch.float32)
+            #print(f"i is :  {i}, i-drop_time is: {i-drop_time}")
+            #print(f"Number of dropstime after: {drop_time}")
+            # Assign action only to the main agent
+            if i == 0:
+                actions[i] = main_agent_action
+            else:
+                actions[0] = torch.zeros_like(agent.action.u)
+                
+
+        print(f"Number of actions being generated: {len(actions)}")
         obs, rews, dones, info = env.step(actions)
+
 
         # Update the trail for twin_tracking scenario
         if scenario_name == "twin_tracking":
@@ -98,7 +155,7 @@ if __name__ == "__main__":
         scenario_name="twin_tracking",
         heuristic=SimplePolicy,
         n_envs=300,
-        n_steps=200,
+        n_steps=40,
         render=True,
         save_render=False,
     )
