@@ -1,6 +1,6 @@
 import torch
 from vmas import render_interactively
-from vmas.simulator.core import Agent, World, Sphere
+from vmas.simulator.core import Agent, World, Sphere,Landmark
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.utils import TorchUtils
 
@@ -19,6 +19,18 @@ class Scenario(BaseScenario):
         self.trail_points = []
         self.last_point = None
         self.trail_distance = 0.5
+        
+        #**********************************************************************************************************************
+        
+        showing_goal = Landmark(
+            name="showing goal",
+            collide=False,
+            shape=Sphere(radius=0.03),
+            color=(0, 0, 1),
+        )
+        world.add_landmark(showing_goal)
+        showing_goal.set_pos(self.goal_pos, batch_index=0)
+        
 
         return world
 
@@ -64,7 +76,7 @@ class Scenario(BaseScenario):
     #**********************************************************************************************************************
     # Add a static agent to the world
     def add_static_agent(self, position):
-            static_agent = Agent(name=f"static_{len(self.world.agents)}", u_multiplier=0.0, shape=Sphere(0.03)) #collide=False
+            static_agent = Agent(name=f"static_{len(self.world.agents)}", u_multiplier=0.0, shape=Sphere(0.03), collide=False) #collide=False
             self.world.add_agent(static_agent)  # Add the agent to the world first
 
             # Extract the relevant slice from the position tensor for a single agent

@@ -5,27 +5,12 @@ from vmas.simulator.heuristic_policy import BaseHeuristicPolicy, RandomPolicy
 from vmas.simulator.utils import save_video
 
 from typing import Type
-
-# define the policy
-class SimplePolicy(BaseHeuristicPolicy):
-    def __init__(self, continuous_actions=True):
-        super().__init__(continuous_actions)
-        self.target_pos = None
-
-    def compute_action(self, observation: torch.Tensor, u_range: float) -> torch.Tensor:
-        if self.target_pos is None:
-            # Set a random target position
-            self.target_pos = torch.rand(2) * 2 - 1  # Random position between -1 and 1 for both x and y
-
-        # Compute action towards the target position
-        pos_agent = observation[:, :2]
-        action = torch.clamp(self.target_pos - pos_agent, min=-u_range, max=u_range)
-        return action
+from vmas.scenarios.single_agent_scenario import Scenario, SimplePolicy
 
 # trying to render the scenario 
-def run_single_agent(
+def run_single_agent( 
     scenario_name: str,
-    heuristic: Type[BaseHeuristicPolicy] = SimplePolicy,
+    heuristic: Type[BaseHeuristicPolicy] = RandomPolicy,
     n_steps: int = 200,
     n_envs: int = 1,
     env_kwargs: dict = {},
@@ -94,7 +79,7 @@ if __name__ == "__main__":
         scenario_name="single_agent_scenario",  
         heuristic=SimplePolicy,
         n_envs=1,       
-        n_steps=50,    # run the environment in certain steps (changeable)
+        n_steps=100,    # run the environment in certain steps (changeable)
         render=True,
         save_render=False,
     )
