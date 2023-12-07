@@ -24,15 +24,37 @@ class Scenario(BaseScenario):
         world.add_landmark(goal_landmark)
         goal_landmark.set_pos(self.goal_pos.unsqueeze(0), batch_index=0)
 
+        # Issue: The landmark appears at the center of the screen despite being set to a random position.
+        # Potential causes could be incorrect initialization, rendering logic, or coordinate system issues.
+
         return world
 
     def reset_world_at(self, env_index: int = None):
+        # Randomly initialize the agent's position
         for agent in self.world.agents:
             agent.set_pos(
-                torch.zeros((1, self.world.dim_p), device=self.world.device).uniform_(-1.0, 1.0),
+                torch.zeros(
+                    (1, self.world.dim_p) if env_index is not None else (self.world.batch_dim, self.world.dim_p),
+                    device=self.world.device,
+                    dtype=torch.float32,
+                ).uniform_(-1.0, 1.0),
                 batch_index=env_index
             )
 
+        # Randomly initialize the landmark's position
+        for landmark in self.world.landmarks:
+            landmark.set_pos(
+                torch.zeros(
+                    (1, self.world.dim_p) if env_index is not None else (self.world.batch_dim, self.world.dim_p),
+                    device=self.world.device,
+                    dtype=torch.float32,
+                ).uniform_(-1.0, 1.0),
+                batch_index=env_index
+            )
+
+        # Issue: Ensure that the landmark's position is being updated correctly and not overridden elsewhere.
+
+    # Reward based on the distance to the goal, note that the reward is negative, no problem with that
     def reward(self, agent: Agent):
         distance_to_goal = torch.norm(agent.state.pos - self.goal_pos)
         return -distance_to_goal.unsqueeze(0)
@@ -54,3 +76,4 @@ if __name__ == "__main__":
         desired_velocity=0.05,
         n_agents=1,
     )
+1
