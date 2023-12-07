@@ -2,7 +2,7 @@ import torch
 from vmas import render_interactively
 from vmas.simulator.core import Agent, World, Sphere,Landmark
 from vmas.simulator.scenario import BaseScenario
-from vmas.simulator.utils import TorchUtils
+from vmas.simulator.utils import TorchUtils, Color
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
@@ -26,7 +26,7 @@ class Scenario(BaseScenario):
             name="showing goal",
             collide=False,
             shape=Sphere(radius=0.03),
-            color=(0, 0, 1),
+            color=Color.GREEN,
         )
         world.add_landmark(showing_goal)
         showing_goal.set_pos(self.goal_pos, batch_index=0)
