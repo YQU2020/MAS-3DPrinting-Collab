@@ -11,19 +11,27 @@ class Scenario(BaseScenario):
         world.add_agent(agent)
 
         # Add a landmark to visually represent the target position
-        self.landmark = Landmark(
+        self.goalpoint = Landmark(
             name="target_landmark",
             collide=False, 
             shape=Sphere(radius=0.03),
             color=Color.GREEN,
         )
-        world.add_landmark(self.landmark)
+        world.add_landmark(self.goalpoint)
+        self.goal_pos = torch.rand(2) * 2 - 1  # Random position between -1 and 1 for both x and y
+        self.goal_pos = torch.tensor([1.0, 1.0], device=device)  # Far corner
         
         # Issue: The landmark appears at the center of the screen despite being set to a random position.
         # Potential causes could be incorrect initialization, rendering logic, or coordinate system issues.
         # Removed the landmark position initialization from the reset_world_at function to see if it would fix the issue.
 
-
+        # initialize the landmark's position
+        self.goalpoint.set_pos(
+            self.goal_pos,
+            batch_index=None
+        )
+        # Now the landmark always appears at the center of the screen, regardless of the position set above.
+        # But the agent will still move towards the goal position, so the issue is only with the rendering.
         return world
 
     def reset_world_at(self, env_index: int = None):
@@ -38,24 +46,23 @@ class Scenario(BaseScenario):
                 batch_index=env_index
             )
 
-        # Randomly initialize the landmark's position
-        self.landmark.set_pos(
-            torch.zeros(
-                (1, self.world.dim_p) if env_index is not None else (self.world.batch_dim, self.world.dim_p),
-                device=self.world.device,
-                dtype=torch.float32,
-            ).uniform_(-1.0, 1.0),
-            batch_index=env_index
-        )
+
+        
 
     def reward(self, agent: Agent):
         # Reward based on the distance to the landmark
-        distance_to_landmark = torch.norm(agent.state.pos - self.landmark.state.pos)
+        distance_to_landmark = torch.norm(agent.state.pos - self.goalpoint.state.pos)
         return -distance_to_landmark.unsqueeze(0)  # Negative reward for distance
 
     def observation(self, agent: Agent):
-        # Observation includes agent's position, velocity, and relative position to the landmark
-        return torch.cat([agent.state.pos, agent.state.vel, self.landmark.state.pos - agent.state.pos], dim=-1)
+        return torch.cat(
+            [
+                agent.state.pos,
+                agent.state.vel,
+                self.world.landmarks[0].state.pos - agent.state.pos,
+            ],
+            dim=-1,
+        )
 
 class SimplePolicy:
     def compute_action(self, observation: torch.Tensor, u_range: float) -> torch.Tensor:

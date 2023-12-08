@@ -12,7 +12,7 @@ from vmas.simulator.utils import save_video
 def use_vmas_env(render: bool = False, save_render: bool = False):
     assert not (save_render and not render), "To save the video you have to render it"
 
-    scenario_name = "single_agent_scenario"
+    scenario_name = "dropout"
 
     # Scenario specific variables
     n_agents = 4
