@@ -21,7 +21,7 @@ def run_single_agent(
     policy = heuristic()
     env = make_env(
         scenario=scenario_name,
-        num_envs=n_envs,
+        num_envs=n_envs,a
         device=device,
         continuous_actions=True,
         wrapper=None,
@@ -41,23 +41,18 @@ def run_single_agent(
             actions[i] = policy.compute_action(obs[i], u_range=env.agents[i].u_range)
 
         obs, rews, dones, info = env.step(actions)
-
-        # Extracting specific parts of the observation
-        agent_pos = obs[0][0][:2]  # Agent's current position
-        agent_vel = obs[0][0][2:4]  # Agent's current velocity
-        relative_goal_pos = obs[0][0][4:6]  # Relative position to the goal
+        obs[0][0][4:6] = env.scenario.goal_pos.unsqueeze(0)
 
         # Assuming the goal position is static and known
-        goal_pos = env.scenario.goal_pos
 
         print("********************************************************************************************************************")
-        print(f"Step: {step}, Agent Position: {agent_pos}, Goal Position: {goal_pos}, Agent Velocity: {agent_vel}, relative_goal_pos: {relative_goal_pos}")
+        print(f"Step: {step}, Agent Position: {obs[0][0][:2]}, Goal Position: {env.scenario.goal_landmark.state.pos[0]}, Agent Velocity: {obs[0][0][2:4]}, relative_goal_pos: {obs[0][0][4:6]}")
 
         rewards = torch.stack(rews, dim=1)
         global_reward = rewards.mean(dim=1)
         mean_global_reward = global_reward.mean(dim=0)
         total_reward += mean_global_reward
-
+        print(f"reward: {mean_global_reward}, total_reward: {total_reward}")
         if render:
             frame_list.append(
                 env.render(
