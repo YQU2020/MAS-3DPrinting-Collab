@@ -15,22 +15,22 @@ class Scenario(BaseScenario):
         '''
         # Set a random goal position
         self.goal_pos = torch.rand(2) * 2 - 1  # Random position between -1 and 1 for both x and y
+        
+        # trail
         self.trail_active = False
         self.trail_points = []
         self.last_point = None
         self.trail_distance = 0.5
         
         #**********************************************************************************************************************
-        
-        showing_goal = Landmark(
-            name="showing goal",
+        self.goal_landmark = Landmark(
+            name="goal_landmark",
             collide=False,
             shape=Sphere(radius=0.03),
             color=Color.GREEN,
         )
-        world.add_landmark(showing_goal)
-        showing_goal.set_pos(self.goal_pos, batch_index=0)
-        
+        world.add_landmark(self.goal_landmark)
+        self.goal_landmark.set_pos(self.goal_pos.unsqueeze(0), batch_index=0)
 
         return world
 
@@ -48,7 +48,9 @@ class Scenario(BaseScenario):
             self.trail_points.clear()
             self.last_point = None
             self.trail_active = False
-
+        # Reset landmark's position
+        self.goal_landmark.set_pos(self.goal_pos.unsqueeze(0), batch_index=env_index)
+        
     def reward(self, agent: Agent):
         distance_to_goal = torch.norm(agent.state.pos - self.goal_pos)
         return -distance_to_goal.unsqueeze(0)
@@ -101,7 +103,7 @@ class SimplePolicy:
         min_action_magnitude = 0.05
         action_magnitude = torch.norm(action, dim=1, keepdim=True)
         action = action / torch.clamp(action_magnitude, min=min_action_magnitude) * u_range
-
+        
         return action
 
 

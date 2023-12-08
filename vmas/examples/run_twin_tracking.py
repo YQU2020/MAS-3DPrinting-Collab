@@ -50,10 +50,12 @@ def run_twin_tracking(
     trail_interval = 10  # Number of steps after which to add a static agent
     
     
-    iteration_since_first_two_actions = 0
-    has_two_actions_occurred = False
-    drop_time = 1
+    iteration_since_first_two_actions = 0   # Counter to keep track of the number of iterations since the first occurrence of two actions
+    has_two_actions_occurred = False        # Flag to check if two actions have occurred
+    drop_time = 1                           # Number of iterations after which to drop the static agent
     
+    
+    # Update the goal position in the observation
     for s in range(n_steps):
         step += 1
         print("********************************************************************************************************************")
@@ -71,17 +73,19 @@ def run_twin_tracking(
         # Increment the counter if the flag is true
         if has_two_actions_occurred:
             iteration_since_first_two_actions += 1
-            
-        main_agent_pos = env.world.agents[0].state.pos
-        goal_pos = twin_scenario.goal_pos  # Access the goal position from the scenario instance
-        print(f"Main agent position: {main_agent_pos[0]}, Goal position: {goal_pos}")
         
-        distance_to_goal = torch.norm(main_agent_pos - goal_pos)
-        print(f"Distance to goal: {distance_to_goal}")
+        actions = [torch.tensor([0.0])] * len(obs)
         
-        if distance_to_goal < 1e-6:  # some_threshold is a small value
-            print("Main agent has reached the goal position. Terminating simulation.")
-            break  # Terminate the simulation
+        # Update the goal position in the observation
+        for i in range(len(obs)):
+            obs[i][0][4:6] = env.scenario.goal_pos.unsqueeze(0)
+
+        # Check if agent has reached the goal
+        goal_pos = env.scenario.goal_pos
+        agent_pos = obs[0][0][:2]
+        if torch.norm(agent_pos - goal_pos) < 0.01:
+            print("Agent has reached the goal. Terminating simulation.")
+            break
         
         # Increment drop_time every "trail_interval" iterations after the first occurrence
         print(f"iteration_since_first_two_actions: {iteration_since_first_two_actions}")
@@ -155,7 +159,7 @@ if __name__ == "__main__":
         scenario_name="twin_tracking",
         heuristic=SimplePolicy,
         n_envs=300,
-        n_steps=40,
+        n_steps=300,
         render=True,
         save_render=False,
     )
