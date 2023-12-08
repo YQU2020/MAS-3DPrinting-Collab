@@ -83,6 +83,9 @@ def run_twin_tracking(
         # Check if agent has reached the goal
         goal_pos = env.scenario.goal_pos
         agent_pos = obs[0][0][:2]
+        
+        #print(f"Agent Position: {agent_pos}, Goal Position: {goal_pos}, distance: {torch.norm(agent_pos - goal_pos)}")
+        
         if torch.norm(agent_pos - goal_pos) < 0.01:
             print("Agent has reached the goal. Terminating simulation.")
             break
@@ -115,16 +118,20 @@ def run_twin_tracking(
 
         print(f"Number of actions being generated: {len(actions)}")
         obs, rews, dones, info = env.step(actions)
-
-
+        '''
+        one_agent_created = False
         # Update the trail for twin_tracking scenario
-        if scenario_name == "twin_tracking":
+        
+        if scenario_name == "twin_tracking" and one_agent_created == False:
             twin_scenario.update_trail(env.agents[0])
-            
+            one_agent_created = True
+        '''    
         if s % trail_interval == 0:
             current_position = env.world.agents[0].state.pos.clone()
             if last_position is not None:
-                twin_scenario.add_static_agent(last_position)
+                print(last_position.shape)
+                env.scenario.add_landmark(last_position[:][0])
+            #    twin_scenario.add_static_agent(last_position)
             last_position = current_position
 
         rewards = torch.stack(rews, dim=1)
@@ -152,7 +159,6 @@ def run_twin_tracking(
         f"It took: {total_time}s for {n_steps} steps of {n_envs} parallel environments on device {device}\n"
         f"The average total reward was {total_reward}"
     )
-
 
 if __name__ == "__main__":
     run_twin_tracking(

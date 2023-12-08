@@ -85,6 +85,17 @@ class Scenario(BaseScenario):
             single_agent_position = position[0]
             static_agent.set_pos(single_agent_position, batch_index=0)
             
+            
+    def add_landmark(self, position):
+            landmark = Landmark(
+                name=f"landmark_{len(self.world.landmarks)}",
+                collide=False,
+                shape=Sphere(radius=0.03),
+                color=Color.GREEN,
+            )
+            self.world.add_landmark(landmark)
+            landmark.set_pos(position.unsqueeze(0), batch_index=0)
+            
 class SimplePolicy:
     def compute_action(self, observation: torch.Tensor, u_range: float) -> torch.Tensor:
         pos_agent = observation[:, :2]  # Agent's current position
