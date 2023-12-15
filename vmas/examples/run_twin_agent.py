@@ -39,7 +39,7 @@ def run_twin_agent_scenario(
     
     current_position = [None] * len(env.world.agents)
     last_position = None
-    time_interval = 10  # Number of steps after which to add a static agent
+    time_interval = 1  # Number of steps after which to add a static agent
 
     for s in range(n_steps):
         step += 1
@@ -56,8 +56,8 @@ def run_twin_agent_scenario(
             goal_pos = env.scenario.nth_goal_pos[i]
             print(f"Agent {i} goal position: {goal_pos}")
             agent_pos[i] = obs[i][0][:2]
-            if torch.norm(agent_pos[i] - goal_pos) < 0.01:
-                print("Agent {i} has reached the goal. Terminating simulation.")
+            if torch.norm(agent_pos[i] - goal_pos) < 0.05:
+                print(f"Agent {i} has reached the goal. Terminating simulation.")
                 break
         obs, rews, dones, info = env.step(actions)
         

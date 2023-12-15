@@ -11,21 +11,18 @@ class Scenario(BaseScenario):
 
         # Add two agents
         for i in range(2):
-            agent = Agent(name=f"agent_{i}", u_multiplier=1.0, shape=Sphere(0.03))
+            agent = Agent(name=f"agent_{i}", u_multiplier=1.0, shape=Sphere(0.03), color=Color.GRAY)
             world.add_agent(agent)
             
         # Set a random goal position
-        #self.goal_pos = torch.rand(2) * 2 - 1  # Random position between -1 and 1 for both x and y
-        
-        self.nth_goal_pos = torch.zeros((2, 2))
+        self.nth_goal_pos = [torch.rand(2) * 2 - 1 for _ in range(2)]  # Two random goal positions
+
         # Create two landmarks as goals
         for i in range(2):
-            self.goal_pos = torch.rand(2) * 2 - 1  # Random position between -1 and 1 for both x and y
-            goal = Landmark(name=f"goal_{i}", collide=False, shape=Sphere(0.03), color=Color.RED)
+            goal = Landmark(name=f"goal_{i}", collide=False, shape=Sphere(0.05), color=Color.RED)
             world.add_landmark(goal)
-            self.nth_goal_pos[i] = self.goal_pos.unsqueeze(0)
-            print(f"nth_goal_pos: {self.nth_goal_pos[i]}, goal_pos: {self.goal_pos}")
-            goal.set_pos(self.goal_pos, batch_index=0)
+            print(f"nth_goal_pos: {self.nth_goal_pos[i]}")
+            goal.set_pos(self.nth_goal_pos[i], batch_index=0)
 
         print(f"nth_goal_pos: {self.nth_goal_pos}")
         self.trail_active = False
@@ -47,7 +44,9 @@ class Scenario(BaseScenario):
             goal.set_pos(self.nth_goal_pos[i], batch_index=env_index)
         
     def observation(self, agent: Agent):
-        expanded_goal_pos = self.goal_pos.unsqueeze(0).expand(agent.state.pos.size(0), -1)
+        agent_index = int(agent.name.split('_')[-1])
+        self.goal_pos = self.nth_goal_pos[agent_index]
+        expanded_goal_pos = self.goal_pos.expand(agent.state.pos.size(0), -1)
         return torch.cat([agent.state.pos, agent.state.vel, expanded_goal_pos], dim=-1)
 
     def reward(self, agent: Agent):
@@ -78,7 +77,7 @@ class Scenario(BaseScenario):
             landmark = Landmark(
                 name=f"landmark_{len(self.world.landmarks)}",
                 collide=False,
-                shape=Sphere(radius=0.03),
+                shape=Sphere(radius=0.018),
                 color=Color.GREEN,
             )
             self.world.add_landmark(landmark)
