@@ -8,17 +8,17 @@ class Scenario(BaseScenario):
     
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
         world = World(batch_dim, device)
-
+        agentNum = 2
         # Add two agents
-        for i in range(2):
+        for i in range(agentNum):
             agent = Agent(name=f"agent_{i}", u_multiplier=1.0, shape=Sphere(0.03), color=Color.GRAY)
             world.add_agent(agent)
             
         # Set a random goal position
-        self.nth_goal_pos = [torch.rand(2) * 2 - 1 for _ in range(2)]  # Two random goal positions
+        self.nth_goal_pos = [torch.rand(2) * 2 - 1 for _ in range(agentNum)]  # Two random goal positions
 
         # Create two landmarks as goals
-        for i in range(2):
+        for i in range(agentNum):
             goal = Landmark(name=f"goal_{i}", collide=False, shape=Sphere(0.05), color=Color.RED)
             world.add_landmark(goal)
             print(f"nth_goal_pos: {self.nth_goal_pos[i]}")
