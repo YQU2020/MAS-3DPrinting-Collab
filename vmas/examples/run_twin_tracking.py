@@ -118,14 +118,7 @@ def run_twin_tracking(
 
         print(f"Number of actions being generated: {len(actions)}")
         obs, rews, dones, info = env.step(actions)
-        '''
-        one_agent_created = False
-        # Update the trail for twin_tracking scenario
         
-        if scenario_name == "twin_tracking" and one_agent_created == False:
-            twin_scenario.update_trail(env.agents[0])
-            one_agent_created = True
-        '''    
         if s % trail_interval == 0:
             current_position = env.world.agents[0].state.pos.clone()
             if last_position is not None:
@@ -138,6 +131,7 @@ def run_twin_tracking(
         global_reward = rewards.mean(dim=1)
         mean_global_reward = global_reward.mean(dim=0)
         total_reward += mean_global_reward
+        
         if render:
             frame_list.append(
                 env.render(
@@ -165,7 +159,7 @@ if __name__ == "__main__":
         scenario_name="twin_tracking",
         heuristic=SimplePolicy,
         n_envs=300,
-        n_steps=300,
+        n_steps=400,
         render=True,
         save_render=False,
     )

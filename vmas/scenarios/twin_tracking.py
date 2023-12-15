@@ -74,7 +74,8 @@ class Scenario(BaseScenario):
     def stop_trail(self):
         self.trail_active = False
         self.update_trail(self.world.agents[0])
-    
+    '''
+    # Abandoned code, add static agent (not landmark) to represent the trail
     #**********************************************************************************************************************
     # Add a static agent to the world
     def add_static_agent(self, position):
@@ -84,7 +85,7 @@ class Scenario(BaseScenario):
             # Extract the relevant slice from the position tensor for a single agent
             single_agent_position = position[0]
             static_agent.set_pos(single_agent_position, batch_index=0)
-            
+    '''        
             
     def add_landmark(self, position):
             landmark = Landmark(
