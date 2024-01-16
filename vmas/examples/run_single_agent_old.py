@@ -21,7 +21,7 @@ def run_single_agent(
     policy = heuristic()
     env = make_env(
         scenario=scenario_name,
-        num_envs=n_envs,a
+        num_envs=n_envs,
         device=device,
         continuous_actions=True,
         wrapper=None,
