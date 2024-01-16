@@ -5,9 +5,9 @@ import torch
 from vmas import make_env
 from vmas.simulator.heuristic_policy import BaseHeuristicPolicy, RandomPolicy
 from vmas.simulator.utils import save_video
-from vmas.scenarios.twin_tracking import Scenario, SimplePolicy
+from vmas.scenarios.double_agent_trails import Scenario, SimplePolicy
 
-def run_twin_tracking(
+def run_double_agent_trails(
     scenario_name: str,
     heuristic: Type[BaseHeuristicPolicy] = RandomPolicy,
     n_steps: int = 200,
@@ -155,8 +155,8 @@ def run_twin_tracking(
     )
 
 if __name__ == "__main__":
-    run_twin_tracking(
-        scenario_name="twin_tracking",
+    run_double_agent_trails(
+        scenario_name="double_agent_trails",
         heuristic=SimplePolicy,
         n_envs=300,
         n_steps=400,

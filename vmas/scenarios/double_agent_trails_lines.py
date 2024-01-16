@@ -73,14 +73,24 @@ class Scenario(BaseScenario):
         for agent in self.world.agents:
             self.update_trail()
 
-    def add_landmark(self, position):
+    def add_landmark(self, position, current_position):
             landmark = Landmark(
                 name=f"landmark_{len(self.world.landmarks)}",
                 collide=False,
-                shape=Sphere(radius=0.018),
+                #shape=Sphere(radius=0.018),
+                shape=Line(length=0.03 * 2),
+                
                 color=Color.GREEN,
             )
             self.world.add_landmark(landmark)
+            # print(f"position: {position}, current_position: {current_position[0]}")
+            # print(F"object here: {landmark.shape}")
+            
+            # set the direction of the landmark
+            direction_vector = current_position[0] - position
+            angle = torch.atan2(direction_vector[1], direction_vector[0])
+            # print(f"angle set: {angle}")
+            landmark.set_rot(angle, batch_index=None)
             landmark.set_pos(position.unsqueeze(0), batch_index=0)
 
 class SimplePolicy:

@@ -3,10 +3,10 @@ from vmas import make_env
 from vmas.simulator.heuristic_policy import BaseHeuristicPolicy, RandomPolicy
 from vmas.simulator.utils import save_video
 from typing import Type
-from vmas.scenarios.twin_agent import Scenario, SimplePolicy
+from vmas.scenarios.double_agent_trails_lines import Scenario, SimplePolicy
 
 
-def run_twin_agent_scenario(
+def run_double_agent_trails_lines(
     scenario_name: str,
     heuristic: Type[BaseHeuristicPolicy] = RandomPolicy,
     n_steps: int = 200,
@@ -38,7 +38,7 @@ def run_twin_agent_scenario(
     total_reward = 0
     
     current_position = [None] * len(env.world.agents)
-    last_position = None
+    last_position = [None]*len(env.world.agents)
     time_interval = 1  # Number of steps after which to add a static agent
 
     for s in range(n_steps):
@@ -63,11 +63,12 @@ def run_twin_agent_scenario(
         
         
         if s % time_interval == 0:
-            for i in range (len(env.world.agents)):
+            for i, agent in enumerate(env.world.agents):
                 current_position[i] = env.world.agents[i].state.pos.clone()
-                if last_position is not None:
-                    env.scenario.add_landmark(last_position[:][0])
-                last_position = current_position[i]   
+                # update the last position
+                if last_position[i] is not None:
+                    env.scenario.add_landmark(last_position[i][:][0], current_position[i])
+                last_position[i] = current_position[i]   
         
         rewards = torch.stack(rews, dim=1)
         global_reward = rewards.mean(dim=1)
@@ -93,11 +94,11 @@ def run_twin_agent_scenario(
     )
 
 if __name__ == "__main__":
-    run_twin_agent_scenario(
-        scenario_name="twin_agent",
+    run_double_agent_trails_lines(
+        scenario_name="double_agent_trails_lines",
         heuristic=SimplePolicy,
         n_envs=1,
-        n_steps=100,
+        n_steps=40,
         render=True,
         save_render=False,
     )
