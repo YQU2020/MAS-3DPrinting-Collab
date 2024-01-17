@@ -1,14 +1,14 @@
 import torch
 from vmas import render_interactively
-from vmas.simulator.core import Agent, World, Sphere,Landmark
+from vmas.simulator.core import Agent, World, Sphere, Landmark, Line
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.utils import TorchUtils, Color
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
-        world = World(batch_dim, device)
+        self._world = World(batch_dim, device)
         agent = Agent(name="agent_0", u_multiplier=1.0, shape=Sphere(0.03))
-        world.add_agent(agent)
+        self._world.add_agent(agent)
         '''
         # Set a specific goal position far from the start position
         self.goal_pos = torch.tensor([1.0, 1.0], device=device)  # Far corner
@@ -22,17 +22,18 @@ class Scenario(BaseScenario):
         self.last_point = None
         self.trail_distance = 0.5
         
-        #**********************************************************************************************************************
+        # ***********************************************************************************************
+        # Goal landmark
         self.goal_landmark = Landmark(
             name="goal_landmark",
             collide=False,
             shape=Sphere(radius=0.03),
             color=Color.GREEN,
         )
-        world.add_landmark(self.goal_landmark)
+        self._world.add_landmark(self.goal_landmark)
         self.goal_landmark.set_pos(self.goal_pos.unsqueeze(0), batch_index=0)
 
-        return world
+        return self._world
 
     def reset_world_at(self, env_index: int = None):
         for agent in self.world.agents:
@@ -50,6 +51,8 @@ class Scenario(BaseScenario):
             self.trail_active = False
         # Reset landmark's position
         self.goal_landmark.set_pos(self.goal_pos.unsqueeze(0), batch_index=env_index)
+        
+        
         
     def reward(self, agent: Agent):
         distance_to_goal = torch.norm(agent.state.pos - self.goal_pos)
@@ -96,6 +99,8 @@ class Scenario(BaseScenario):
             )
             self.world.add_landmark(landmark)
             landmark.set_pos(position.unsqueeze(0), batch_index=0)
+
+
             
 class SimplePolicy:
     def compute_action(self, observation: torch.Tensor, u_range: float) -> torch.Tensor:
