@@ -155,6 +155,7 @@ class Scenario(BaseScenario):
             
 class SimplePolicy:
     def compute_action(self, observation: torch.Tensor, u_range: float, current_goal_pos) -> torch.Tensor:
+        
         pos_agent = observation[:, :2]  # Agent's current position
         goal_pos = current_goal_pos.unsqueeze(0).expand(observation.size(0), -1)  # 使用传入的当前目标点
         print(f"goal_pos: {goal_pos[0]}")
