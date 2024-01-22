@@ -58,7 +58,7 @@ def run_print_path(
         # Check the current number of agents
         num_agents = len(env.world.agents)
         actions = [None] * num_agents
-        print(f"Number of agents in environment: {num_agents}, Number of actions before: {len(actions)}")
+        #print(f"Number of agents in environment: {num_agents}, Number of actions before: {len(actions)}")
         
         actions = [torch.tensor([0.0])] * len(obs)
         
@@ -70,7 +70,7 @@ def run_print_path(
         goal_pos = env.scenario.print_path_points[env.scenario.current_segment_index]  #  From print_path_points get goal_pos directly
 
         agent_pos = obs[0][0][:2]
-        print(f"Step {s}: Agent Position: {agent_pos}, Current Goal Position: {env.scenario.goal_pos}")
+        #print(f"Step {s}: Agent Position: {agent_pos}, Current Goal Position: {env.scenario.goal_pos}")
         
         # Update the trail，检查agent是否到达当前目标点并更新到下一个目标点 
         env.scenario.update_trail(env.world.agents[0])
@@ -121,6 +121,7 @@ def run_print_path(
         print(f"Number of actions being generated: {len(actions)}")
         obs, rews, dones, info = env.step(actions)
         
+        # GREEN TRAIL PRINTING
         if s % trail_interval == 0:
             current_position = env.world.agents[0].state.pos.clone()
             if last_position is not None:
@@ -128,7 +129,7 @@ def run_print_path(
                 env.scenario.add_landmark(last_position[:][0])
             #    twin_scenario.add_static_agent(last_position)
             last_position = current_position
-
+        
         rewards = torch.stack(rews, dim=1)
         global_reward = rewards.mean(dim=1)
         mean_global_reward = global_reward.mean(dim=0)
