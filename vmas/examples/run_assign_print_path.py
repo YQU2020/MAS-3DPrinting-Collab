@@ -35,7 +35,7 @@ def run_assign_print_path(
 
     frame_list = []  # For creating a gif
     init_time = time.time()
-    step = 0
+
     obs = env.reset()
     total_reward = 0
     
@@ -43,8 +43,9 @@ def run_assign_print_path(
     
     # Update the goal position in the observation
     for s in range(n_steps):
-        print("********************************************************************************************************************")
-        print(f"Step: {s + 1}")
+        #print("********************************************************************************************************************")
+        #print(f"Step: {s + 1}")
+
 
         # Loop through each agent and execute the corresponding action
         actions = []
@@ -57,7 +58,7 @@ def run_assign_print_path(
             current_goal_pos = env.scenario.print_path_points[env.scenario.current_segment_index]
             next_goal_pos = env.scenario.print_path_points[min(env.scenario.current_segment_index + 1, len(env.scenario.print_path_points) - 1)]
 
-            print(f"Step {s}: Agent Position: {agent_pos}, Current Goal Position: {current_goal_pos}, Next Goal Position: {next_goal_pos}")
+            #print(f"Step {s}: Agent Position: {agent_pos}, Current Goal Position: {current_goal_pos}, Next Goal Position: {next_goal_pos}")
 
             # calculate the agent's action
             agent_action = policy.compute_action(agent_observation, u_range=agent.u_range, current_goal_pos=current_goal_pos)
@@ -77,10 +78,13 @@ def run_assign_print_path(
         # Execute the environment step
         obs, rews, dones, info = env.step(actions)
 
-        # chcek if all agents have completed their line segments
-        all_done = all(agent.current_line_segment is None for agent in env.world.agents)
-        if all_done:
-            print("All agents have completed their line segments. Terminating simulation.")
+        # 更新agents打印路径
+        env.scenario.update_trail()
+        
+        # 检查所有agent是否完成所有线段
+        all_lines_printed = all(agent.current_line_segment is None for agent in env.world.agents)
+        if all_lines_printed:
+            print("All line segments have been printed. Terminating scenario.")
             break
 
         rewards = torch.stack(rews, dim=1)
@@ -116,7 +120,7 @@ if __name__ == "__main__":
         scenario_name="assign_print_path",
         heuristic=SimplePolicy,
         n_envs=300,
-        n_steps=500,
+        n_steps=1000,
         render=True,
         save_render=False,
     )
