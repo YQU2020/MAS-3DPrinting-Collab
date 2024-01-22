@@ -78,10 +78,10 @@ def run_assign_print_path(
         # Execute the environment step
         obs, rews, dones, info = env.step(actions)
 
-        # 更新agents打印路径
+        # Update the print path of each agent
         env.scenario.update_trail()
         
-        # 检查所有agent是否完成所有线段
+        # check if all line segments have been printed
         all_lines_printed = all(agent.current_line_segment is None for agent in env.world.agents)
         if all_lines_printed:
             print("All line segments have been printed. Terminating scenario.")
@@ -94,7 +94,7 @@ def run_assign_print_path(
 
         # check if all agents have completed their line segments
         if all(agent.current_line_segment is None for agent in env.world.agents):
-            print("All agents have completed their segments. Terminating simulation.")
+            print("All agents have completed their segments. Terminating simulation. In step: ", s)
             break
         
         if render:
