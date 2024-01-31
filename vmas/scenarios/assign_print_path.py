@@ -3,103 +3,35 @@ from vmas import render_interactively
 from vmas.simulator.core import Agent, World, Sphere, Landmark, Line
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.utils import TorchUtils, Color
+from vmas.simulator import rendering
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
         self._world = World(batch_dim, device)
         self.num_agents = 2  # M=2
-        self.agents = [Agent(name=f"agent_{i}", u_multiplier=1.0, shape=Sphere(0.03)) for i in range(self.num_agents)]
-        for agent in self.agents:
+        agent_colors = [Color.RED, Color.BLUE]  # Define the colors for the agents
+
+        # Create agents with different colors
+        self.agents = []
+        for i in range(self.num_agents):
+            agent = Agent(name=f"agent_{i}", u_multiplier=1.0, shape=Sphere(0.03), collide=False, color=agent_colors[i])
+            self.agents.append(agent)
             self._world.add_agent(agent)
-            agent.is_printing = False  # Whether the agent is printing
-            agent.current_line_segment = None  # The current line segment the agent is assigned to
-        
-        # Set a random goal position
-        self.goal_pos = torch.rand(2) * 2 - 1  # Random position between -1 and 1 for both x and y
-        print(f"Initial Goal position: {self.goal_pos.tolist()}")
+            agent.is_printing = False
+            agent.current_line_segment = None
+            agent.at_start = False
+            agent.goal_pos = torch.tensor([0.0, 0.0])
+    
         # trail
         self.trail_active = False
         self.trail_points = []
         self.last_point = None
         self.trail_distance = 0.1
-        
-        # -----------------------------------------------------------------------------------------------
-        # Initialize the print path
-        self.print_path_points = self.create_print_path(num_points=10)
-        self.current_segment_index = 0  # Index to track the current segment
-        
-        # Initialize the list of unprinted line segments
-        self.unprinted_segments = [(self.print_path_points[i], self.print_path_points[i + 1]) for i in range(len(self.print_path_points) - 1)]
-        
-        # ***********************************************************************************************
-        # Goal landmark
-        self.goal_landmark = Landmark(
-            name="goal_landmark",
-            collide=False,
-            shape=Sphere(radius=0.03),
-            color=Color.GREEN,
-        )
-        self._world.add_landmark(self.goal_landmark)
-        # Set the goal landmark's position IF there are any points in the print path
-        if len(self.print_path_points) > 0:
-            self.goal_pos = self.print_path_points[self.current_segment_index]
-            self.goal_landmark.set_pos(self.goal_pos.unsqueeze(0), batch_index=0)  # Update the goal landmark's position
 
-        # Assign the initial line segments to the agents
-        #self.assign_print_paths()
+        # visualize in run_assign_print_path! 
         
+
         return self._world
-    
-    def assign_print_paths(self):
-        # Reset the current line segment of all agents
-        for agent in self.agents:
-            agent.current_line_segment = None
-
-        segment_idx = 0  # Current line segment index
-        for i, agent in enumerate(self.agents):
-            if segment_idx < len(self.unprinted_segments):
-                # Assign line segment to agent
-                agent.current_line_segment = self.unprinted_segments[segment_idx]
-                segment_idx += 1  # Move to the next segment
-                # For even-numbered agents, skip a segment (to maintain spacing)
-                if i % 2 == 0 and segment_idx < len(self.unprinted_segments):
-                    segment_idx += 1
-                agent.is_printing = False
-                print(f"Agent {i} initial line segment: {agent.current_line_segment}")
-            else:
-                # No more segments to assign
-                break
-
-
-
-    def create_print_path(self, num_points):
-        # This function creates the print path, the last point is self.goal_pos
-        # This function returns a list of points
-        path_points = []
-        print("Print Path Points Coordinates:")  # Print the header for the coordinates
-        for i in range(num_points - 1):  # Generate one less point than num_points because the last point will be self.goal_pos
-            # Random point between -1 and 1 for both x and y
-            point = torch.rand(2) * 2 - 1 
-            path_points.append(point)
-            print(f"Point {i}: {point.tolist()}")  # Print the coordinates of the point
-
-        # Add self.goal_pos as the last point of the path
-        path_points.append(self.goal_pos)
-        print(f"Point {num_points - 1} (Goal): {self.goal_pos.tolist()}")  # Print the coordinates of the goal pointW
-
-        return path_points
-
-    def visualize_print_path(self):
-        for point in self.print_path_points:
-            self.pathpoints_landmark = Landmark(
-            name="pathpoints_landmark",
-            collide=False,
-            shape=Sphere(radius=0.03),
-            color=Color.RED,
-            )
-            self._world.add_landmark(self.pathpoints_landmark)
-            self.pathpoints_landmark.set_pos(point, batch_index=0)
-            
             
     def reset_world_at(self, env_index: int = None):
         for agent in self.world.agents:
@@ -113,18 +45,12 @@ class Scenario(BaseScenario):
             self.trail_active = False
             
             self.current_segment_index = 0
-            if len(self.print_path_points) > 0:
-                self.goal_pos = self.print_path_points[self.current_segment_index]
-                self.goal_landmark.set_pos(self.goal_pos.unsqueeze(0), batch_index=0)  # Update the goal landmark's position
-            else:
-                self.goal_pos = torch.tensor([0.0, 0.0], device=self._world.device)  # Default goal position
-    
             
-        # Reset landmark's position
-        self.goal_landmark.set_pos(self.goal_pos.unsqueeze(0), batch_index=env_index)
-        
-        # Reassign unprinted line segments to agents
-        self.unprinted_segments = [(self.print_path_points[i], self.print_path_points[i + 1]) for i in range(len(self.print_path_points) - 1)]
+        self.print_path_points = self.create_square_print_path(side_length=1.0)
+        self.current_segment_index = 0
+        if not hasattr(self, 'unprinted_segments') or not self.unprinted_segments:
+            # If unprinted_segments not defined or empty, create a new print path
+            self.unprinted_segments = [(self.print_path_points[i], self.print_path_points[i + 1]) for i in range(len(self.print_path_points) - 1)]
         for agent in self.agents:
             if self.unprinted_segments:
                 agent.current_line_segment = self.unprinted_segments.pop(0)
@@ -132,68 +58,48 @@ class Scenario(BaseScenario):
             else:
                 agent.current_line_segment = None
                 agent.is_printing = False
-        
-        #self.assign_print_paths()
-        self.visualize_print_path()
+                
+        # initialize unprinted_segments
+        self.unprinted_segments = [(self.print_path_points[i], self.print_path_points[i + 1]) for i in range(len(self.print_path_points) - 1)]
+        print(f"Unprinted Segments: {self.unprinted_segments}")
         
     def reward(self, agent: Agent):
-        distance_to_goal = torch.norm(agent.state.pos - self.goal_pos)
+        distance_to_goal = torch.norm(agent.state.pos - agent.goal_pos)
         return -distance_to_goal.unsqueeze(0)
 
     def observation(self, agent: Agent):
-        expanded_goal_pos = self.goal_pos.unsqueeze(0).expand(agent.state.pos.size(0), -1)
+        num_envs = agent.state.pos.size(0)  # size of batch
+        expanded_goal_pos = agent.goal_pos.expand(num_envs, -1)  # expand goal position to match batch size
         return torch.cat([agent.state.pos, agent.state.vel, expanded_goal_pos], dim=-1)
 
     def update_trail(self):
         for agent in self.agents:
             if agent.current_line_segment:
                 start_point, end_point = agent.current_line_segment
-
-                # If the agent is printing and has reached the endpoint
                 if agent.is_printing and torch.norm(agent.state.pos - end_point) <= self.trail_distance:
-                    print(f"Agent {agent.name} has finished printing line segment {agent.current_line_segment}")
-                    # Stop printing
-                    agent.is_printing = False
-                    # Set agent's new target position to (1, 1)
-                    agent.target_pos = torch.tensor([[1, 1]], device=self._world.device)
-                    # Reset the current line segment, waiting for the next one to be assigned
-                    agent.current_line_segment = None
-
+                    agent.is_printing = False  # Finished printing
+                    self.set_line_collidable(start_point, end_point, collidable=True)  # set line collidable
+                    agent.current_line_segment = None  # erase current line segment
                     if self.unprinted_segments:
-                        # If there are still unprinted line segments, assign one to the agent
                         agent.current_line_segment = self.unprinted_segments.pop(0)
+                        agent.at_start = False
+                        agent.goal_pos = agent.current_line_segment[0]  # set goal position to start of next line segment
                     else:
-                        # If there are no more line segments, print message indicating all line segments have been printed
-                        print(f"All line segments have been printed. Agent {agent.name} is moving to the side.")
-                
-                # If the agent has a target position, move towards the target position
-                if hasattr(agent, 'target_pos') and agent.target_pos is not None:
-                    self.move_agent_towards(agent, agent.target_pos)
-                    # Check if the agent has reached the target position
-                    if torch.norm(agent.state.pos - agent.target_pos) <= self.trail_distance:
-                        # Reached the target position, remove the target position
-                        agent.target_pos = None
-                        print(f"Agent {agent.name} has moved to the side.")
-                
-                elif not agent.is_printing and torch.norm(agent.state.pos - start_point) <= self.trail_distance:
-                    # If the agent has not started printing and is near the starting point, start printing
-                    agent.is_printing = True
-                    print(f"Agent {agent.name} is starting to print line segment {agent.current_line_segment}")
-                elif agent.is_printing:
-                    # If the agent is printing, continue moving towards the endpoint
-                    self.move_agent_towards(agent, end_point)
-                else:
-                    # If the agent has not started printing, move towards the starting point
-                    self.move_agent_towards(agent, start_point)
+                        agent.goal_pos = agent.state.pos  # if no more line segments, stay at current position
+                    print(f"Agent {agent.name} finished segment. Moving to next segment.")
+                elif not agent.is_printing:
+                    self.move_agent(agent)
 
-
-    def move_agent_towards(self, agent, target_pos):
-        # Calculate the direction vector from the agent's position to the target position and update the agent's position
-        direction = target_pos - agent.state.pos
+    def move_agent(self, agent):
+        # Decide whether agent has reached the start of the line segment
+        target_point = agent.current_line_segment[1] if agent.is_printing else agent.current_line_segment[0]
+        print(f"Agent {agent.name} is printing: {agent.is_printing}, target point: {target_point.tolist()}")
+        # logic to decide whether agent has reached the start of the line segment
+        direction = target_point - agent.state.pos
         direction_norm = torch.norm(direction)
-        if direction_norm > 0.05:
+        if direction_norm > 0:
             direction = direction / direction_norm
-        agent.state.pos += direction * agent.u_multiplier  # Update position
+        agent.state.pos += direction * agent.u_multiplier
             
     def add_landmark(self, position, color=Color.GREEN):
             landmark = Landmark(
@@ -205,28 +111,134 @@ class Scenario(BaseScenario):
             self.world.add_landmark(landmark)
             landmark.set_pos(position.unsqueeze(0), batch_index=0)
             
+    def avoid_collision(self, agent, other_agent):
+        # Calculate the direction vector from agent to other_agent
+        direction_to_other = other_agent.state.pos - agent.state.pos
+        direction_to_other_norm = torch.norm(direction_to_other)
+
+        if direction_to_other_norm > 0:
+            # Normalize the direction vector
+            direction_to_other = direction_to_other / direction_to_other_norm
+
+            # Create a new direction that is perpendicular to the direction to the other agent
+            # This is a simple way to create an avoidance maneuver
+            avoidance_direction = torch.tensor([-direction_to_other[1], direction_to_other[0]])
+
+            # Update the agent's position to move away from the other agent
+            agent.state.pos += avoidance_direction * agent.u_multiplier
+
+    def assign_print_paths(self):
+        # only assign if agent has no current line segment
+        for agent in self.agents:
+            print(f"Now assigning: current_line_segment: {agent.current_line_segment}")
+            if agent.current_line_segment is None and self.unprinted_segments:
+                agent.current_line_segment = self.unprinted_segments.pop(0)
+                agent.is_printing = False
+                agent.at_start = False
+                agent.goal_pos = agent.current_line_segment[0]  # set goal position to start of next line segment
+                print(f"Agent {agent.name} assigned line segment: {agent.current_line_segment}")
+            else:
+                # no more line segments to assign
+                print(f"Agent {agent.name} has no more line segments to assign.")
+                agent.current_line_segment = None
+                break
+
+
+    def create_print_path(self, num_points):
+        # Create a more complex and realistic print path
+        path_points = []
+        print("Print Path Points Coordinates:")
+        
+        # Generate points to form a complex shape (e.g., a square or curve)
+        for i in range(num_points):
+            if i < num_points // 4:
+                # First quarter: Horizontal line
+                point = torch.tensor([i * 4.0 / num_points, 0.0]) * 2 - 1
+            elif i < num_points // 2:
+                # Second quarter: Vertical line
+                point = torch.tensor([1.0, (i - num_points // 4) * 4.0 / num_points]) * 2 - 1
+            elif i < 3 * num_points // 4:
+                # Third quarter: Horizontal line
+                point = torch.tensor([1 - (i - num_points // 2) * 4.0 / num_points, 1.0]) * 2 - 1
+            else:
+                # Fourth quarter: Vertical line
+                point = torch.tensor([0.0, 1 - (i - 3 * num_points // 4) * 4.0 / num_points]) * 2 - 1
+            
+            path_points.append(point)
+            print(f"Point {i}: {point.tolist()}")
+
+        return path_points
+
+    def visulalize_endpoints(self):
+        for point in self.print_path_points:
+            self.pathpoints_landmark = Landmark(
+            name="pathpoints_landmark",
+            collide=False,
+            shape=Sphere(radius=0.03),
+            color=Color.RED,
+            )
+            self._world.add_landmark(self.pathpoints_landmark)
+            self.pathpoints_landmark.set_pos(point, batch_index=0)
+            
+    def create_square_print_path(self, side_length):
+        # define the coordinates of the square
+        half_length = side_length / 2
+        square_points = [
+            torch.tensor([-half_length, -half_length]),  
+            torch.tensor([-half_length, half_length]),   
+            torch.tensor([half_length, half_length]),    
+            torch.tensor([half_length, -half_length]),   
+            torch.tensor([-half_length, -half_length])   
+        ]
+        return square_points
+
+    def add_line_to_world(self, start_point, end_point, color):
+        print(f"Adding line from {start_point.tolist()} to {end_point.tolist()}")
+        # Create a line landmark
+        line = Landmark(
+            name="line",
+            collide=False,  # Set collision detection as needed
+            # The Line class may require a length parameter, you may need to calculate the distance between start_point and end_point
+            shape=Line(length=torch.norm(end_point - start_point).item()),
+            color=color,
+        )
+        # Add the line to the world
+        self._world.add_landmark(line)
+        # Set the position and orientation of the line
+        line.set_pos((start_point + end_point) / 2.0, batch_index=0)  # Set position to the midpoint of the two points
+        angle = torch.atan2(end_point[1] - start_point[1], end_point[0] - start_point[0])
+        line.set_rot(angle.unsqueeze(0), batch_index=0)  # Set rotation angle
+        
+    def set_line_collidable(self, start_point, end_point, collidable):
+        # Iterate through all landmarks to find the corresponding line segment
+        for landmark in self._world.landmarks:
+            if isinstance(landmark, Line) and torch.all(torch.eq(landmark.start, start_point)) and torch.all(torch.eq(landmark.end, end_point)):
+                # Found the corresponding line segment, update its collision property
+                landmark.collide = collidable
+                break
+        
 class SimplePolicy:
-    def compute_action(self, observation: torch.Tensor, u_range: float, current_goal_pos) -> torch.Tensor:
-        #print(f"observation: {observation}")
+    def compute_action(self, observation: torch.Tensor, agent: Agent, u_range: float) -> torch.Tensor:
         pos_agent = observation[:, :2]  # Agent's current position
-        goal_pos = current_goal_pos.unsqueeze(0).expand(pos_agent.size(0), -1)  # Set the goal position to the current goal position
-        
-        #print(f"goal_pos: {goal_pos[0]}")
+        # Position of goal_pos in observation data
+        goal_pos = observation[:, 4:6]  # Goal position
+        print(f"Agent {agent.name} at_start: {agent.at_start}, goal_pos: {agent.goal_pos[0]}")
+        if agent.current_line_segment is not None:
+            if not agent.at_start:
+                # Agent has not reached the starting point, target position is the start of the line segment
+                goal_pos = agent.current_line_segment[0].unsqueeze(0)
+            else:
+                # Agent has reached the starting point, target position is the end of the line segment
+                goal_pos = agent.current_line_segment[1].unsqueeze(0)
+                agent.is_printing = True
 
-        # Calculate the vector from the agent to the goal
+        # Compute the vector from the agent to the goal position
         vector_to_goal = goal_pos - pos_agent
-        #print(f"vector_to_goal: {vector_to_goal[0]}")
-        # Normalize the direction vector to have a magnitude of 1
-        norm_direction_to_goal = vector_to_goal / torch.clamp(torch.norm(vector_to_goal, dim=1, keepdim=True), min=1e-6)
-
-        # Scale the normalized direction vector by the maximum action range (u_range)
-        action = norm_direction_to_goal * u_range
-
-        # Ensure the action magnitude is at least a minimum value
-        min_action_magnitude = 0.05
-        action_magnitude = torch.norm(action, dim=1, keepdim=True)
-        action = action / torch.clamp(action_magnitude, min=min_action_magnitude) * u_range
         
+        # Normalize the direction vector
+        norm_direction_to_goal = vector_to_goal / torch.clamp(torch.norm(vector_to_goal, dim=1, keepdim=True), min=1e-6)
+        # Compute the action
+        action = norm_direction_to_goal * u_range
         return action
 
 if __name__ == "__main__":

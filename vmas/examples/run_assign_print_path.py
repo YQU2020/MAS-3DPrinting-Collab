@@ -4,7 +4,7 @@ from typing import Type
 import torch
 from vmas import make_env
 from vmas.simulator.heuristic_policy import BaseHeuristicPolicy, RandomPolicy
-from vmas.simulator.utils import save_video
+from vmas.simulator.utils import save_video, Color
 from vmas.scenarios.assign_print_path import Scenario, SimplePolicy
 
 def run_assign_print_path(
@@ -38,42 +38,29 @@ def run_assign_print_path(
 
     obs = env.reset()
     total_reward = 0
-    
-    env.scenario.assign_print_paths()
+    # Add the line segments to the world, mannually
+    for start_point, end_point in env.scenario.unprinted_segments:
+            env.scenario.add_line_to_world(start_point, end_point, color=Color.GRAY)
+            
+    env.scenario.visulalize_endpoints()        
+    #env.scenario.assign_print_paths()
+
     
     # Update the goal position in the observation
     for s in range(n_steps):
-        #print("********************************************************************************************************************")
-        #print(f"Step: {s + 1}")
-
-
+        print(f"Unprinted Segments: {env.scenario.unprinted_segments}")
         # Loop through each agent and execute the corresponding action
         actions = []
         for agent in env.world.agents:
-            agent_observation = env.scenario.observation(agent)  
-            agent_pos = agent_observation[:,:2]  
-            current_goal_pos = env.scenario.print_path_points[env.scenario.current_segment_index]  # current_goal_pos是当前目标点
-
-            # check the current and next goal points
-            current_goal_pos = env.scenario.print_path_points[env.scenario.current_segment_index]
-            next_goal_pos = env.scenario.print_path_points[min(env.scenario.current_segment_index + 1, len(env.scenario.print_path_points) - 1)]
-
-            #print(f"Step {s}: Agent Position: {agent_pos}, Current Goal Position: {current_goal_pos}, Next Goal Position: {next_goal_pos}")
-
-            # calculate the agent's action
-            agent_action = policy.compute_action(agent_observation, u_range=agent.u_range, current_goal_pos=current_goal_pos)
+            agent_observation = env.scenario.observation(agent)
+            if agent.current_line_segment is not None and not agent.at_start:
+                # Remember to only use the first element of the tensor
+                if torch.norm((agent.state.pos - agent.current_line_segment[0])[0]) < 0.05: 
+                    agent.at_start = True  # agent has reached the start of the line segment
+                    agent.goal_pos = agent.current_line_segment[1]  # update the goal position
+                    agent.is_printing = True
+            agent_action = policy.compute_action(agent_observation, agent, u_range=agent.u_range)
             actions.append(agent_action)
-
-            # check if the agent has reached the current goal point
-            if torch.norm(agent_pos - current_goal_pos) < 0.01:
-                print(f"Agent has reached the current goal point: {current_goal_pos}.")
-                # update the goal position to the next point in the print path
-                if env.scenario.current_segment_index < len(env.scenario.print_path_points) - 1:
-                    env.scenario.current_segment_index += 1
-                    print(f"Moving to the next goal point: {next_goal_pos}.")
-                else:
-                    print("Agent has reached the final goal. Terminating simulation.")
-                    break
 
         # Execute the environment step
         obs, rews, dones, info = env.step(actions)
@@ -119,7 +106,7 @@ if __name__ == "__main__":
     run_assign_print_path(
         scenario_name="assign_print_path",
         heuristic=SimplePolicy,
-        n_envs=300,
+        n_envs=400,
         n_steps=1000,
         render=True,
         save_render=False,
