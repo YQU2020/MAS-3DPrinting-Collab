@@ -1,4 +1,4 @@
-import torch
+import torch, math, csv
 from vmas import render_interactively
 from vmas.simulator.core import Agent, World, Sphere, Landmark, Line
 from vmas.simulator.scenario import BaseScenario
@@ -29,8 +29,29 @@ class Scenario(BaseScenario):
         self.trail_distance = 0.1
 
         # visualize in run_assign_print_path! 
+    
+        # Create a new print path, complex shape
+        self.print_path_points = self.create_complex_print_path(20)
         
-
+        # Read the print path from a CSV file, TESTing
+        #self.print_path_points = self.read_print_path_from_csv("/home/abcd/Documents/GitHub/VMAS_yqu_implementation/vmas/scenarios/coordinates.csv")
+        print("First TIME _______________________________-")
+        self.current_segment_index = 0
+        
+        if not hasattr(self, 'unprinted_segments') or not self.unprinted_segments:
+            # If unprinted_segments not defined or empty, create a new print path
+            self.unprinted_segments = [(self.print_path_points[i], self.print_path_points[i + 1]) for i in range(len(self.print_path_points) - 1)]
+        for agent in self.agents:
+            if self.unprinted_segments:
+                agent.current_line_segment = self.unprinted_segments.pop(0)
+                agent.is_printing = False
+            else:
+                agent.current_line_segment = None
+                agent.is_printing = False
+               
+        # initialize unprinted_segments
+        self.unprinted_segments = [(self.print_path_points[i], self.print_path_points[i + 1]) for i in range(len(self.print_path_points) - 1)]
+        print(f"Unprinted Segments: {self.unprinted_segments}")
         return self._world
             
     def reset_world_at(self, env_index: int = None):
@@ -46,22 +67,6 @@ class Scenario(BaseScenario):
             
             self.current_segment_index = 0
             
-        self.print_path_points = self.create_square_print_path(side_length=1.0)
-        self.current_segment_index = 0
-        if not hasattr(self, 'unprinted_segments') or not self.unprinted_segments:
-            # If unprinted_segments not defined or empty, create a new print path
-            self.unprinted_segments = [(self.print_path_points[i], self.print_path_points[i + 1]) for i in range(len(self.print_path_points) - 1)]
-        for agent in self.agents:
-            if self.unprinted_segments:
-                agent.current_line_segment = self.unprinted_segments.pop(0)
-                agent.is_printing = False
-            else:
-                agent.current_line_segment = None
-                agent.is_printing = False
-                
-        # initialize unprinted_segments
-        self.unprinted_segments = [(self.print_path_points[i], self.print_path_points[i + 1]) for i in range(len(self.print_path_points) - 1)]
-        print(f"Unprinted Segments: {self.unprinted_segments}")
         
     def reward(self, agent: Agent):
         distance_to_goal = torch.norm(agent.state.pos - agent.goal_pos)
@@ -127,48 +132,6 @@ class Scenario(BaseScenario):
             # Update the agent's position to move away from the other agent
             agent.state.pos += avoidance_direction * agent.u_multiplier
 
-    def assign_print_paths(self):
-        # only assign if agent has no current line segment
-        for agent in self.agents:
-            print(f"Now assigning: current_line_segment: {agent.current_line_segment}")
-            if agent.current_line_segment is None and self.unprinted_segments:
-                agent.current_line_segment = self.unprinted_segments.pop(0)
-                agent.is_printing = False
-                agent.at_start = False
-                agent.goal_pos = agent.current_line_segment[0]  # set goal position to start of next line segment
-                print(f"Agent {agent.name} assigned line segment: {agent.current_line_segment}")
-            else:
-                # no more line segments to assign
-                print(f"Agent {agent.name} has no more line segments to assign.")
-                agent.current_line_segment = None
-                break
-
-
-    def create_print_path(self, num_points):
-        # Create a more complex and realistic print path
-        path_points = []
-        print("Print Path Points Coordinates:")
-        
-        # Generate points to form a complex shape (e.g., a square or curve)
-        for i in range(num_points):
-            if i < num_points // 4:
-                # First quarter: Horizontal line
-                point = torch.tensor([i * 4.0 / num_points, 0.0]) * 2 - 1
-            elif i < num_points // 2:
-                # Second quarter: Vertical line
-                point = torch.tensor([1.0, (i - num_points // 4) * 4.0 / num_points]) * 2 - 1
-            elif i < 3 * num_points // 4:
-                # Third quarter: Horizontal line
-                point = torch.tensor([1 - (i - num_points // 2) * 4.0 / num_points, 1.0]) * 2 - 1
-            else:
-                # Fourth quarter: Vertical line
-                point = torch.tensor([0.0, 1 - (i - 3 * num_points // 4) * 4.0 / num_points]) * 2 - 1
-            
-            path_points.append(point)
-            print(f"Point {i}: {point.tolist()}")
-
-        return path_points
-
     def visulalize_endpoints(self):
         for point in self.print_path_points:
             self.pathpoints_landmark = Landmark(
@@ -216,6 +179,68 @@ class Scenario(BaseScenario):
                 # Found the corresponding line segment, update its collision property
                 landmark.collide = collidable
                 break
+    # ============== Set of functions to create different print paths ================
+    
+    def create_print_path(self, num_points):
+        # Create a more complex and realistic print path
+        path_points = []
+        print("Print Path Points Coordinates:")
+        
+        # Generate points to form a complex shape (e.g., a square or curve)
+        for i in range(num_points):
+            if i < num_points // 4:
+                # First quarter: Horizontal line
+                point = torch.tensor([i * 4.0 / num_points, 0.0]) * 2 - 1
+            elif i < num_points // 2:
+                # Second quarter: Vertical line
+                point = torch.tensor([1.0, (i - num_points // 4) * 4.0 / num_points]) * 2 - 1
+            elif i < 3 * num_points // 4:
+                # Third quarter: Horizontal line
+                point = torch.tensor([1 - (i - num_points // 2) * 4.0 / num_points, 1.0]) * 2 - 1
+            else:
+                # Fourth quarter: Vertical line
+                point = torch.tensor([0.0, 1 - (i - 3 * num_points // 4) * 4.0 / num_points]) * 2 - 1
+            
+            path_points.append(point)
+            print(f"Point {i}: {point.tolist()}")
+
+        return path_points
+                
+    def create_complex_print_path(self, num_points):
+        # Create a more complex and realistic print path
+        path_points = []
+        # Create points to form a complex shape (e.g., a square or curve)
+        for i in range(num_points):
+            if i < num_points // 3:
+                # Horizontal line
+                point = torch.tensor([i * 3.0 / num_points, 0.0]) * 2 - 1
+            elif i < 2 * num_points // 3:
+                # Vertical line
+                point = torch.tensor([1.0, (i - num_points // 3) * 3.0 / num_points]) * 2 - 1
+            else:
+                # Circular arc
+                angle = (i - 2 * num_points // 3) * 2 * math.pi / (num_points // 3)
+                point = torch.tensor([math.cos(angle), math.sin(angle)]) * 0.5 + torch.tensor([0.5, 0.5])
+            
+            path_points.append(point)
+        print("Print Path Points Coordinates:", path_points)
+        return path_points
+
+    def read_print_path_from_csv(self, file_path):
+        path_points = []
+        with open(file_path, 'r') as file:
+            csv_reader = csv.reader(file)
+            for row in csv_reader:
+                # Ensure that each row has four elements (coordinates of two points)
+                if len(row) == 4:
+                    start_point = torch.tensor([float(row[0]), float(row[1])])
+                    end_point = torch.tensor([float(row[2]), float(row[3])])
+                    # Add line segment (pair of start and end points)
+                    path_points.append(start_point)
+                    path_points.append(end_point)
+            
+        print("Print Path Points Coordinates:", path_points)
+        return path_points
         
 class SimplePolicy:
     def compute_action(self, observation: torch.Tensor, agent: Agent, u_range: float) -> torch.Tensor:
@@ -245,7 +270,7 @@ if __name__ == "__main__":
     
     render_interactively(
         __file__,
-        desired_velocity=0.05,
+        desired_velocity=0.01,
         n_agents=2,
         
     )

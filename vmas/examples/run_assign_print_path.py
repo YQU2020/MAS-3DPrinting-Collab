@@ -42,13 +42,11 @@ def run_assign_print_path(
     for start_point, end_point in env.scenario.unprinted_segments:
             env.scenario.add_line_to_world(start_point, end_point, color=Color.GRAY)
             
-    env.scenario.visulalize_endpoints()        
-    #env.scenario.assign_print_paths()
+    #env.scenario.visulalize_endpoints()        
 
-    
     # Update the goal position in the observation
     for s in range(n_steps):
-        print(f"Unprinted Segments: {env.scenario.unprinted_segments}")
+        #print(f"Unprinted Segments: {env.scenario.unprinted_segments}")
         # Loop through each agent and execute the corresponding action
         actions = []
         for agent in env.world.agents:
