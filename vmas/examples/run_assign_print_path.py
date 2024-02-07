@@ -38,12 +38,16 @@ def run_assign_print_path(
 
     obs = env.reset()
     total_reward = 0
+    #print("Unprinted Segments:", env.scenario.unprinted_segments)
+    
     # Add the line segments to the world, mannually
     for start_point, end_point in env.scenario.unprinted_segments:
             env.scenario.add_line_to_world(start_point, end_point, color=Color.GRAY)
-            
-    #env.scenario.visulalize_endpoints()        
+            env.scenario.visulalize_endpoints(start_point, end_point)
+    # Show the endpoints of the line segments      
+           
 
+    #env.scenario.assign_print_paths()
     # Update the goal position in the observation
     for s in range(n_steps):
         #print(f"Unprinted Segments: {env.scenario.unprinted_segments}")
@@ -51,6 +55,7 @@ def run_assign_print_path(
         actions = []
         for agent in env.world.agents:
             agent_observation = env.scenario.observation(agent)
+            
             if agent.current_line_segment is not None and not agent.at_start:
                 # Remember to only use the first element of the tensor
                 if torch.norm((agent.state.pos - agent.current_line_segment[0])[0]) < 0.05: 
