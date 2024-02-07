@@ -29,5 +29,5 @@ def save_to_csv(segments, file_name):
         for segment in segments:
             writer.writerow([segment[0][0].item(), segment[0][1].item(), segment[1][0].item(), segment[1][1].item()])
 
-line_segments = generate_line_segments(400)
-save_to_csv(line_segments, '200_coordinates.csv')
+line_segments = generate_line_segments(40)
+save_to_csv(line_segments, 'coordinates.csv')

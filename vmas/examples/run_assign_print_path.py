@@ -36,9 +36,14 @@ def run_assign_print_path(
     frame_list = []  # For creating a gif
     init_time = time.time()
 
-    obs = env.reset()
+    #obs = env.reset() # This line is not needed because the line segments are already in the world
+    
     total_reward = 0
     #print("Unprinted Segments:", env.scenario.unprinted_segments)
+    # Because reset_world_at will be called once before the first line segment is printed, 
+    # it will pop off the first group of N line segments (N is the number of agents)
+    env.scenario.unprinted_segments.insert(0, (env.scenario.print_path_points[0], env.scenario.print_path_points[1]))
+    env.scenario.unprinted_segments.insert(1, (env.scenario.print_path_points[2], env.scenario.print_path_points[3]))
     
     # Add the line segments to the world, mannually
     for start_point, end_point in env.scenario.unprinted_segments:
@@ -46,7 +51,6 @@ def run_assign_print_path(
             env.scenario.visulalize_endpoints(start_point, end_point)
     # Show the endpoints of the line segments      
            
-
     #env.scenario.assign_print_paths()
     # Update the goal position in the observation
     for s in range(n_steps):

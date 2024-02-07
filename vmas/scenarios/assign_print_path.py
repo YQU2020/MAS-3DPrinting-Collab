@@ -35,7 +35,7 @@ class Scenario(BaseScenario):
         #self.print_path_points = self.create_complex_print_path(20)
         
         # Read the print path from a CSV file (200_coordinates.csv)
-        self.print_path_points = self.read_print_path_from_csv("200_coordinates.csv")
+        self.print_path_points = self.read_print_path_from_csv(f"/home/abcd/Documents/GitHub/VMAS_yqu_implementation/vmas/scenarios/coordinates.csv")
         
         return self._world
             
@@ -58,6 +58,7 @@ class Scenario(BaseScenario):
             for i in range(0, len(self.print_path_points), 2):  # Iterate through pairs of points
                 if i+1 < len(self.print_path_points):
                     self.unprinted_segments.append((self.print_path_points[i], self.print_path_points[i+1]))
+                    
         for agent in self.agents:
             if self.unprinted_segments:
                 agent.current_line_segment = self.unprinted_segments.pop(0)
@@ -65,6 +66,7 @@ class Scenario(BaseScenario):
             else:
                 agent.current_line_segment = None
                 agent.is_printing = False
+                
         #print(f"Unprinted Segments: {self.unprinted_segments}")
         
 
@@ -137,7 +139,7 @@ class Scenario(BaseScenario):
             self.pathpoints_landmark = Landmark(
             name="pathpoints_landmark",
             collide=False,
-            shape=Sphere(radius=0.03),
+            shape=Sphere(radius=0.01),
             color=Color.GRAY,
             )
             self._world.add_landmark(self.pathpoints_landmark)
@@ -230,7 +232,7 @@ class Scenario(BaseScenario):
                     path_points.append(start_point)
                     path_points.append(end_point)
             
-        print("Print Path Points Coordinates:", path_points)
+        #print("Print Path Points Coordinates:", path_points)
         return path_points
         
 class SimplePolicy:
