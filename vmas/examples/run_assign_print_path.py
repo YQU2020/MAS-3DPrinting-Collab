@@ -39,33 +39,36 @@ def run_assign_print_path(
     #obs = env.reset() # This line is not needed because the line segments are already in the world
     
     total_reward = 0
-    #print("Unprinted Segments:", env.scenario.unprinted_segments)
+    '''
     # Because reset_world_at will be called once before the first line segment is printed, 
     # it will pop off the first group of N line segments (N is the number of agents)
     env.scenario.unprinted_segments.insert(0, (env.scenario.print_path_points[0], env.scenario.print_path_points[1]))
     env.scenario.unprinted_segments.insert(1, (env.scenario.print_path_points[2], env.scenario.print_path_points[3]))
-    
+    '''
     # Add the line segments to the world, mannually
     for start_point, end_point in env.scenario.unprinted_segments:
             env.scenario.add_line_to_world(start_point, end_point, color=Color.GRAY)
             env.scenario.visulalize_endpoints(start_point, end_point)
-    # Show the endpoints of the line segments      
+            
+    env.scenario.execute_tasks_allocation()  # Allocate tasks to agents
            
-    #env.scenario.assign_print_paths()
     # Update the goal position in the observation
     for s in range(n_steps):
-        #print(f"Unprinted Segments: {env.scenario.unprinted_segments}")
+
         # Loop through each agent and execute the corresponding action
         actions = []
         for agent in env.world.agents:
             agent_observation = env.scenario.observation(agent)
-            
+            #print(f"Agent {agent}  printing segment {agent.current_line_segment[0]}")
+            if agent.current_line_segment is None:
+                env.scenario.execute_tasks_allocation()
             if agent.current_line_segment is not None and not agent.at_start:
                 # Remember to only use the first element of the tensor
                 if torch.norm((agent.state.pos - agent.current_line_segment[0])[0]) < 0.05: 
                     agent.at_start = True  # agent has reached the start of the line segment
                     agent.goal_pos = agent.current_line_segment[1]  # update the goal position
                     agent.is_printing = True
+            
             agent_action = policy.compute_action(agent_observation, agent, u_range=agent.u_range)
             actions.append(agent_action)
 
@@ -85,11 +88,6 @@ def run_assign_print_path(
         global_reward = rewards.mean(dim=1)
         mean_global_reward = global_reward.mean(dim=0)
         total_reward += mean_global_reward
-
-        # check if all agents have completed their line segments
-        if all(agent.current_line_segment is None for agent in env.world.agents):
-            print("All agents have completed their segments. Terminating simulation. In step: ", s)
-            break
         
         if render:
             frame_list.append(
@@ -114,7 +112,7 @@ if __name__ == "__main__":
         scenario_name="assign_print_path",
         heuristic=SimplePolicy,
         n_envs=400,
-        n_steps=1000,
+        n_steps=2000,
         render=True,
         save_render=False,
     )

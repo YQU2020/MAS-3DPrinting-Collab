@@ -46,11 +46,11 @@ class Scenario(BaseScenario):
             random_start_pos = torch.rand((1, self.world.dim_p), device=self.world.device) * 2 - 1
             agent.set_pos(random_start_pos, batch_index=env_index)
             
-            self.trail_points.clear()
-            self.last_point = None
-            self.trail_active = False
-            
-            self.current_segment_index = 0
+        self.trail_points.clear()
+        self.last_point = None
+        self.trail_active = False
+        
+        self.current_segment_index = 0
         
         # Only initialize unprinted_segments if it hasn't been done yet
         
@@ -59,16 +59,6 @@ class Scenario(BaseScenario):
                 if i+1 < len(self.print_path_points):
                     self.unprinted_segments.append((self.print_path_points[i], self.print_path_points[i+1]))
                     
-        for agent in self.agents:
-            if self.unprinted_segments:
-                agent.current_line_segment = self.unprinted_segments.pop(0)
-                agent.is_printing = False
-            else:
-                agent.current_line_segment = None
-                agent.is_printing = False
-                
-        #print(f"Unprinted Segments: {self.unprinted_segments}")
-        
 
     def reward(self, agent: Agent):
         distance_to_goal = torch.norm(agent.state.pos - agent.goal_pos)
@@ -80,27 +70,29 @@ class Scenario(BaseScenario):
         return torch.cat([agent.state.pos, agent.state.vel, expanded_goal_pos], dim=-1)
 
     def update_trail(self):
+        need_reassignment = False  # Flag to indicate whether task reassignment is needed
+        
         for agent in self.agents:
             if agent.current_line_segment:
                 start_point, end_point = agent.current_line_segment
                 if agent.is_printing and torch.norm(agent.state.pos - end_point) <= self.trail_distance:
                     agent.is_printing = False  # Finished printing
+                    agent.at_start = False  # Reset the flag
                     self.set_line_collidable(start_point, end_point, collidable=True)  # set line collidable
                     agent.current_line_segment = None  # erase current line segment
-                    if self.unprinted_segments:
-                        agent.current_line_segment = self.unprinted_segments.pop(0)
-                        agent.at_start = False
-                        agent.goal_pos = agent.current_line_segment[0]  # set goal position to start of next line segment
-                    else:
-                        agent.goal_pos = agent.state.pos  # if no more line segments, stay at current position
+                    agent.goal_pos = agent.state.pos  # if no more line segments, stay at current position
                     print(f"Agent {agent.name} finished segment. Moving to next segment.")
-                elif not agent.is_printing:
-                    self.move_agent(agent)
+                    
+                    need_reassignment = True  # Flag that task reassignment is needed
+                    
+        # If there are unprinted segments and some agents are not printing, reassign tasks
+        if need_reassignment and any(agent.current_line_segment is None for agent in self.agents):
+            self.execute_tasks_allocation()
+
 
     def move_agent(self, agent):
         # Decide whether agent has reached the start of the line segment
         target_point = agent.current_line_segment[1] if agent.is_printing else agent.current_line_segment[0]
-        print(f"Agent {agent.name} is printing: {agent.is_printing}, target point: {target_point.tolist()}")
         # logic to decide whether agent has reached the start of the line segment
         direction = target_point - agent.state.pos
         direction_norm = torch.norm(direction)
@@ -145,29 +137,7 @@ class Scenario(BaseScenario):
             self._world.add_landmark(self.pathpoints_landmark)
             self.pathpoints_landmark.set_pos(point, batch_index=0)
 
-    def assign_print_paths(self):
-        # Reset the current line segment of all agents
-        for agent in self.agents:
-            agent.current_line_segment = None
-
-        segment_idx = 0  # Current line segment index
-        for i, agent in enumerate(self.agents):
-            if segment_idx < len(self.unprinted_segments):
-                # Assign line segment to agent
-                agent.current_line_segment = self.unprinted_segments[segment_idx]
-                segment_idx += 1  # Move to the next segment
-                # For even-numbered agents, skip a segment (to maintain spacing)
-                if i % 2 == 0 and segment_idx < len(self.unprinted_segments):
-                    segment_idx += 1
-                agent.is_printing = False
-                print(f"Agent {i} initial line segment: {agent.current_line_segment}")
-            else:
-                # No more segments to assign
-                print(f"No more segments to assign to agent {i}")
-                break
-
     def add_line_to_world(self, start_point, end_point, color):
-        print(f"Adding line from {start_point.tolist()} to {end_point.tolist()}")
         # Create a line landmark
         line = Landmark(
             name="line",
@@ -190,6 +160,7 @@ class Scenario(BaseScenario):
                 # Found the corresponding line segment, update its collision property
                 landmark.collide = collidable
                 break
+            
     # ============== Set of functions to create different print paths ================
                 
     def create_complex_print_path(self, num_segments):
@@ -232,26 +203,81 @@ class Scenario(BaseScenario):
                     path_points.append(start_point)
                     path_points.append(end_point)
             
-        #print("Print Path Points Coordinates:", path_points)
         return path_points
+    
+    # ============== Auction-based assignment ================
+    
+    def collect_bids(self):
+        bids = []  # Save in the form of (task_idx, agent_idx, bid)
+        for task_idx, task in enumerate(self.unprinted_segments):
+            for agent_idx, agent in enumerate(self.agents):
+                # Assume bids are based on distance to start point
+                start_point, _ = task
+                distance = torch.norm(agent.state.pos - start_point)
+                bids.append((task_idx, agent_idx, distance.item()))
+        return bids
+
+    def assign_tasks_based_on_bids(self):
+        bids = self.collect_bids()
+        sorted_bids = sorted(bids, key=lambda x: x[2])
+
+        assigned_tasks = set()
+        assigned_agents = set()
+        tasks_to_remove = []  # Save the task indices to be removed
+
+        for task_idx, agent_idx, bid in sorted_bids:
+            if task_idx not in assigned_tasks and agent_idx not in assigned_agents:
+                self.agents[agent_idx].current_line_segment = self.unprinted_segments[task_idx]
+                self.agents[agent_idx].is_printing = True
+                assigned_tasks.add(task_idx)
+                assigned_agents.add(agent_idx)
+                tasks_to_remove.append(task_idx)  # Add to the list to be removed
+                
+                print(f"Task {task_idx} assigned to Agent {self.agents[agent_idx].name} with bid {bid}")
+
+                if len(assigned_tasks) == len(self.unprinted_segments):
+                    break
+
+        # Use reverse order to remove assigned tasks to avoid index issues
+        for task_idx in sorted(tasks_to_remove, reverse=True):
+            self.unprinted_segments.pop(task_idx)
+
+                    
+    def execute_tasks_allocation(self):
+        if not self.unprinted_segments:
+            return  # If there are no unprinted line segments, return directly
         
+        # Implement the auction
+        self.assign_tasks_based_on_bids()
+        
+        # Labeling each task-assigned intelligence ready to perform the task 
+        for agent in self.agents:
+            if agent.current_line_segment:
+                agent.is_moving_to_task = True  # Labeling each task-assigned intelligence ready to perform the task
+                
+
 class SimplePolicy:
     def compute_action(self, observation: torch.Tensor, agent: Agent, u_range: float) -> torch.Tensor:
-        pos_agent = observation[:, :2]  # Agent's current position
-        # Position of goal_pos in observation data
-        goal_pos = observation[:, 4:6]  # Goal position
-        print(f"Agent {agent.name} at_start: {agent.at_start}, goal_pos: {agent.goal_pos[0]}")
         if agent.current_line_segment is not None:
             if not agent.at_start:
-                # Agent has not reached the starting point, target position is the start of the line segment
-                goal_pos = agent.current_line_segment[0].unsqueeze(0)
+                # If the agent is not at the start of the line segment, the target position is the start point
+                target_pos = agent.current_line_segment[0]  
+                if torch.norm(agent.state.pos - target_pos) < 0.05:
+                    # If the agent is close to the start point, mark it as at the start
+                    agent.at_start = True  
+                    agent.goal_pos = agent.current_line_segment[1]  # Update the goal position
             else:
-                # Agent has reached the starting point, target position is the end of the line segment
-                goal_pos = agent.current_line_segment[1].unsqueeze(0)
-                agent.is_printing = True
-
-        # Compute the vector from the agent to the goal position
-        vector_to_goal = goal_pos - pos_agent
+                # If the agent is at the start of the line segment, the target position is the end point
+                target_pos = agent.current_line_segment[1]
+                
+            # Update the goal position in the observation
+            goal_pos = target_pos.unsqueeze(0) if target_pos.dim() == 1 else target_pos
+        else:
+            # If there is no current task, the goal position remains unchanged (may be the initialized position)
+            goal_pos = agent.goal_pos
+        
+        pos_agent = observation[:, :2]  # Agent's current position
+        vector_to_goal = goal_pos - pos_agent  # Vector to the target position
         
         # Normalize the direction vector
         norm_direction_to_goal = vector_to_goal / torch.clamp(torch.norm(vector_to_goal, dim=1, keepdim=True), min=1e-6)
