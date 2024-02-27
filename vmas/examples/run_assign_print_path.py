@@ -79,7 +79,7 @@ def run_assign_print_path(
         env.scenario.update_trail()
         
         # check if all line segments have been printed
-        all_lines_printed = all(agent.current_line_segment is None for agent in env.world.agents)
+        all_lines_printed = all(agent.current_line_segment is None and not agent.is_printing for agent in env.world.agents)
         if all_lines_printed:
             print("All line segments have been printed. Terminating scenario.")
             break

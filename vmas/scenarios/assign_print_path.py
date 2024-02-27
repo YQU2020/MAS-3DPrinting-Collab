@@ -4,6 +4,7 @@ from vmas.simulator.core import Agent, World, Sphere, Landmark, Line
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.utils import TorchUtils, Color
 from vmas.simulator import rendering
+import numpy as np
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
@@ -22,6 +23,7 @@ class Scenario(BaseScenario):
             agent.at_start = False
             agent.goal_pos = torch.tensor([0.0, 0.0])
             agent.completed_tasks = []  # List to store completed tasks
+            agent.task_queue = []  # List to store the tasks to be executed
     
         # trail
         self.trail_active = False
@@ -210,27 +212,40 @@ class Scenario(BaseScenario):
     
     def collect_bids(self):
         WORKLOAD_WEIGHT = 0.1  # Weight for the workload factor
-        bids = []  # Save in the form of (task_idx, agent_idx, bid)
+        num_tasks = len(self.unprinted_segments)
+        num_agents = len(self.agents)
+        # Initialize a 2D array with zeros. Shape: [num_tasks, num_agents]
+        bids = np.zeros((num_tasks, num_agents, 3))
+        
         for task_idx, task in enumerate(self.unprinted_segments):
             for agent_idx, agent in enumerate(self.agents):
                 start_point, _ = task
                 distance = torch.norm(agent.state.pos - start_point)
-                workload_factor = len(agent.completed_tasks)  # Assume each agent has a 'completed_tasks' list
-                bid = distance + workload_factor * WORKLOAD_WEIGHT  # WORKLOAD_WEIGHT is a predefined constant
-                bids.append((task_idx, agent_idx, bid.item()))
+                workload_factor = len(agent.completed_tasks)
+                bid = distance + workload_factor * WORKLOAD_WEIGHT
+                bids[task_idx, agent_idx] = [task_idx, agent_idx, bid.item()]
+                
         return bids
-
 
     def assign_tasks_based_on_bids(self):
         bids = self.collect_bids()
-        sorted_bids = sorted(bids, key=lambda x: x[2])
+        # Flatten the array to 2D for sorting by bid
+        bids_flat = bids.reshape(-1, 3)
+        sorted_indices = np.argsort(bids_flat[:, 2])
+        sorted_bids_flat = bids_flat[sorted_indices]
 
         assigned_tasks = set()
         assigned_agents = set()
         tasks_to_remove = []  # Save the task indices to be removed
 
-        for task_idx, agent_idx, bid in sorted_bids:
-            if task_idx not in assigned_tasks and agent_idx not in assigned_agents and self.agents[agent_idx].is_printing == False:
+        for flat_index in sorted_indices:
+            # Calculate the original task and agent indices from the flat index
+            num_agents = len(self.agents)
+            task_idx = flat_index // num_agents
+            agent_idx = flat_index % num_agents
+            bid = sorted_bids_flat[flat_index][2]
+
+            if task_idx not in assigned_tasks and agent_idx not in assigned_agents and not self.agents[agent_idx].is_printing:
                 self.agents[agent_idx].current_line_segment = self.unprinted_segments[task_idx]
                 self.agents[agent_idx].is_printing = True
                 assigned_tasks.add(task_idx)
@@ -258,6 +273,8 @@ class Scenario(BaseScenario):
         for agent in self.agents:
             if agent.current_line_segment:
                 agent.is_moving_to_task = True  # Labeling each task-assigned intelligence ready to perform the task
+                
+
                 
 
 class SimplePolicy:

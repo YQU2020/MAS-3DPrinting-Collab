@@ -1,27 +1,24 @@
 import torch
 import math
 import csv
+import random
 
-def generate_line_segments(num_segments):
-    path_segments = []
-    num_points = num_segments * 2
+def check_cross(segment1, segment2):
+    return False  # Check if two line segments cross each other
+def generate_lines(num_points, boundary=1.5):  # generate a random convex polygon.
+    angles_lengths = [(random.uniform(0, 2*math.pi), random.uniform(0.15, boundary)) for _ in range(num_points)]
+    angles_lengths.sort()  # Sort the points by angle
 
-    for i in range(0, num_points, 2):
-        if i < num_points // 3:
-            start_point = torch.tensor([i * 3.0 / num_points, 0.0]) * 2 - 1
-            end_point = torch.tensor([(i+1) * 3.0 / num_points, 0.0]) * 2 - 1
-        elif i < 2 * num_points // 3:
-            start_point = torch.tensor([1.0, (i - num_points // 3) * 3.0 / num_points]) * 2 - 1
-            end_point = torch.tensor([1.0, ((i+1) - num_points // 3) * 3.0 / num_points]) * 2 - 1
-        else:
-            start_angle = (i - 2 * num_points // 3) * 2 * math.pi / (num_points // 3)
-            end_angle = ((i+1) - 2 * num_points // 3) * 2 * math.pi / (num_points // 3)
-            start_point = torch.tensor([math.cos(start_angle), math.sin(start_angle)]) * 0.5 + torch.tensor([0.5, 0.5])
-            end_point = torch.tensor([math.cos(end_angle), math.sin(end_angle)]) * 0.5 + torch.tensor([0.5, 0.5])
+    points = [torch.tensor([math.cos(angle) * length, math.sin(angle) * length]) for angle, length in angles_lengths]
+    return points
 
-        path_segments.append((start_point, end_point))
-
-    return path_segments
+def create_segments_from_points(points): # create line segments from the points
+    segments = []
+    for i in range(len(points)):
+        start_point = points[i]
+        end_point = points[(i + 1) % len(points)]  # Connect the last point to the first point
+        segments.append((start_point, end_point))
+    return segments
 
 def save_to_csv(segments, file_name):
     with open(file_name, 'w', newline='') as file:
@@ -29,5 +26,7 @@ def save_to_csv(segments, file_name):
         for segment in segments:
             writer.writerow([segment[0][0].item(), segment[0][1].item(), segment[1][0].item(), segment[1][1].item()])
 
-line_segments = generate_line_segments(40)
-save_to_csv(line_segments, 'coordinates.csv')
+num_segments = 40
+points = generate_lines(num_segments)
+segments = create_segments_from_points(points)
+save_to_csv(segments, 'coordinates.csv')
