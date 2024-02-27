@@ -21,6 +21,7 @@ class Scenario(BaseScenario):
             agent.current_line_segment = None
             agent.at_start = False
             agent.goal_pos = torch.tensor([0.0, 0.0])
+            agent.completed_tasks = []  # List to store completed tasks
     
         # trail
         self.trail_active = False
@@ -78,17 +79,17 @@ class Scenario(BaseScenario):
                 if agent.is_printing and torch.norm(agent.state.pos - end_point) <= self.trail_distance:
                     agent.is_printing = False  # Finished printing
                     agent.at_start = False  # Reset the flag
+                    agent.completed_tasks.append(agent.current_line_segment)  # Add the completed task to the list
                     self.set_line_collidable(start_point, end_point, collidable=True)  # set line collidable
                     agent.current_line_segment = None  # erase current line segment
                     agent.goal_pos = agent.state.pos  # if no more line segments, stay at current position
-                    print(f"Agent {agent.name} finished segment. Moving to next segment.")
+                    print(f"Agent {agent.name} finished segment. Moving to next segment.printed {len(agent.completed_tasks)} segments")
                     
                     need_reassignment = True  # Flag that task reassignment is needed
                     
         # If there are unprinted segments and some agents are not printing, reassign tasks
         if need_reassignment and any(agent.current_line_segment is None for agent in self.agents):
             self.execute_tasks_allocation()
-
 
     def move_agent(self, agent):
         # Decide whether agent has reached the start of the line segment
@@ -208,14 +209,17 @@ class Scenario(BaseScenario):
     # ============== Auction-based assignment ================
     
     def collect_bids(self):
+        WORKLOAD_WEIGHT = 0.1  # Weight for the workload factor
         bids = []  # Save in the form of (task_idx, agent_idx, bid)
         for task_idx, task in enumerate(self.unprinted_segments):
             for agent_idx, agent in enumerate(self.agents):
-                # Assume bids are based on distance to start point
                 start_point, _ = task
                 distance = torch.norm(agent.state.pos - start_point)
-                bids.append((task_idx, agent_idx, distance.item()))
+                workload_factor = len(agent.completed_tasks)  # Assume each agent has a 'completed_tasks' list
+                bid = distance + workload_factor * WORKLOAD_WEIGHT  # WORKLOAD_WEIGHT is a predefined constant
+                bids.append((task_idx, agent_idx, bid.item()))
         return bids
+
 
     def assign_tasks_based_on_bids(self):
         bids = self.collect_bids()
@@ -226,7 +230,7 @@ class Scenario(BaseScenario):
         tasks_to_remove = []  # Save the task indices to be removed
 
         for task_idx, agent_idx, bid in sorted_bids:
-            if task_idx not in assigned_tasks and agent_idx not in assigned_agents:
+            if task_idx not in assigned_tasks and agent_idx not in assigned_agents and self.agents[agent_idx].is_printing == False:
                 self.agents[agent_idx].current_line_segment = self.unprinted_segments[task_idx]
                 self.agents[agent_idx].is_printing = True
                 assigned_tasks.add(task_idx)
