@@ -48,7 +48,7 @@ def run_assign_print_path(
     # Add the line segments to the world, mannually
     for start_point, end_point in env.scenario.unprinted_segments:
             env.scenario.add_line_to_world(start_point, end_point, color=Color.GRAY)
-            env.scenario.visulalize_endpoints(start_point, end_point)
+            env.scenario.visulalize_endpoints(start_point, end_point, color=Color.GRAY)
             
     env.scenario.execute_tasks_allocation()  # Allocate tasks to agents
            

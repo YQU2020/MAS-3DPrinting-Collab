@@ -5,6 +5,7 @@ from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.utils import TorchUtils, Color
 from vmas.simulator import rendering
 import numpy as np
+import operator
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
@@ -24,7 +25,7 @@ class Scenario(BaseScenario):
             agent.goal_pos = torch.tensor([0.0, 0.0])
             agent.completed_tasks = []  # List to store completed tasks
             agent.task_queue = []  # List to store the tasks to be executed
-    
+            
         # trail
         self.trail_active = False
         self.trail_points = []
@@ -129,18 +130,18 @@ class Scenario(BaseScenario):
             # Update the agent's position to move away from the other agent
             agent.state.pos += avoidance_direction * agent.u_multiplier
 
-    def visulalize_endpoints(self, start_points, end_points):
+    def visulalize_endpoints(self, start_points, end_points, color=Color.GRAY):
         for point in start_points, end_points:
             self.pathpoints_landmark = Landmark(
             name="pathpoints_landmark",
             collide=False,
             shape=Sphere(radius=0.01),
-            color=Color.GRAY,
+            color=color
             )
             self._world.add_landmark(self.pathpoints_landmark)
             self.pathpoints_landmark.set_pos(point, batch_index=0)
 
-    def add_line_to_world(self, start_point, end_point, color):
+    def add_line_to_world(self, start_point, end_point, color=Color.GRAY):
         # Create a line landmark
         line = Landmark(
             name="line",
@@ -232,50 +233,59 @@ class Scenario(BaseScenario):
         # Flatten the array to 2D for sorting by bid
         bids_flat = bids.reshape(-1, 3)
         sorted_indices = np.argsort(bids_flat[:, 2])
-        sorted_bids_flat = bids_flat[sorted_indices]
 
-        assigned_tasks = set()
-        assigned_agents = set()
-        tasks_to_remove = []  # Save the task indices to be removed
+        # Initialize an empty task queue for each agent
+        for agent in self.agents:
+            agent.task_queue = []
 
+        # Temporary structure to keep track of tasks assigned to each agent
+        tasks_assigned_to_agents = {agent_idx: [] for agent_idx in range(len(self.agents))}
+
+        # Assign tasks based on sorted bids
         for flat_index in sorted_indices:
-            # Calculate the original task and agent indices from the flat index
-            num_agents = len(self.agents)
-            task_idx = flat_index // num_agents
-            agent_idx = flat_index % num_agents
-            bid = sorted_bids_flat[flat_index][2]
-
-            if task_idx not in assigned_tasks and agent_idx not in assigned_agents and not self.agents[agent_idx].is_printing:
-                self.agents[agent_idx].current_line_segment = self.unprinted_segments[task_idx]
-                self.agents[agent_idx].is_printing = True
-                assigned_tasks.add(task_idx)
-                assigned_agents.add(agent_idx)
-                tasks_to_remove.append(task_idx)  # Add to the list to be removed
-                
-                print(f"Task {task_idx} assigned to Agent {self.agents[agent_idx].name} with bid {bid}")
-
-                if len(assigned_tasks) == len(self.unprinted_segments):
-                    break
-
-        # Use reverse order to remove assigned tasks to avoid index issues
-        for task_idx in sorted(tasks_to_remove, reverse=True):
-            self.unprinted_segments.pop(task_idx)
+            task_idx, agent_idx, _ = [int(bids_flat[flat_index][i]) for i in range(3)]
+            if len(tasks_assigned_to_agents[agent_idx]) < 2 and task_idx not in tasks_assigned_to_agents[agent_idx]:
+                # Add task to agent's queue if it doesn't already contain it and has less than 2 tasks
+                tasks_assigned_to_agents[agent_idx].append(task_idx)
+                # Convert task index to actual task (assuming unprinted_segments are tensors that need to be tolist)
+                agent_task = self.unprinted_segments[task_idx]
+                self.agents[agent_idx].task_queue.append(agent_task)
 
                     
     def execute_tasks_allocation(self):
-        if not self.unprinted_segments:
-            return  # If there are no unprinted line segments, return directly
         
-        # Implement the auction
-        self.assign_tasks_based_on_bids()
+        self.assign_tasks_based_on_bids()  # Ensure task queues are up-to-date
         
-        # Labeling each task-assigned intelligence ready to perform the task 
-        for agent in self.agents:
-            if agent.current_line_segment:
-                agent.is_moving_to_task = True  # Labeling each task-assigned intelligence ready to perform the task
-                
+        for agent in self.agents: 
+            if not agent.is_printing and agent.task_queue:
+                for task in agent.task_queue:
+                    if not any(
+                        other_agent.is_printing and 
+                        torch.equal(other_agent.current_line_segment[0], task[0]) and
+                        torch.equal(other_agent.current_line_segment[1], task[1])
+                        for other_agent in self.agents if other_agent != agent
+                    ):
+                        agent.current_line_segment = task
+                        agent.is_printing = True
+                        index_to_remove = None
+                        for i, segment in enumerate(self.unprinted_segments):
+                            # Check if both tensors in the tuple match the target tensors
+                            if torch.all(torch.eq(segment[0], task[0])) and torch.all(torch.eq(segment[1], task[1])):
+                                index_to_remove = i
+                                break
+                        
+                        # If an item was found, remove it by index
+                        if index_to_remove is not None:
+                            self.add_line_to_world(task[0], task[1], color=agent.color)
+                            self.unprinted_segments.pop(index_to_remove)
+                        break  # Task assigned, exit loop
 
-                
+                # Update task queue after assignment
+                agent.task_queue = [
+                    task for task in agent.task_queue
+                    if not operator.eq(task[0], agent.current_line_segment)  # Assuming both are tuples
+                ]
+
 
 class SimplePolicy:
     def compute_action(self, observation: torch.Tensor, agent: Agent, u_range: float) -> torch.Tensor:
