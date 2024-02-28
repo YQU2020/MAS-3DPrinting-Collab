@@ -24,6 +24,7 @@ class Scenario(BaseScenario):
             agent.at_start = False
             agent.goal_pos = torch.tensor([0.0, 0.0])
             agent.completed_tasks = []  # List to store completed tasks
+            agent.completed_total_dis = 0.0
             agent.task_queue = []  # List to store the tasks to be executed
             
         # trail
@@ -83,6 +84,7 @@ class Scenario(BaseScenario):
                     agent.is_printing = False  # Finished printing
                     agent.at_start = False  # Reset the flag
                     agent.completed_tasks.append(agent.current_line_segment)  # Add the completed task to the list
+                    agent.completed_total_dis += torch.norm(start_point - end_point)
                     self.set_line_collidable(start_point, end_point, collidable=True)  # set line collidable
                     agent.current_line_segment = None  # erase current line segment
                     agent.goal_pos = agent.state.pos  # if no more line segments, stay at current position
@@ -222,7 +224,7 @@ class Scenario(BaseScenario):
             for agent_idx, agent in enumerate(self.agents):
                 start_point, _ = task
                 distance = torch.norm(agent.state.pos - start_point)
-                workload_factor = len(agent.completed_tasks)
+                workload_factor = len(agent.completed_tasks) * 0.1 + agent.completed_total_dis * 0.1 
                 bid = distance + workload_factor * WORKLOAD_WEIGHT
                 bids[task_idx, agent_idx] = [task_idx, agent_idx, bid.item()]
                 
