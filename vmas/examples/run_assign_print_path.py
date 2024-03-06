@@ -71,7 +71,7 @@ def run_assign_print_path(
             
             agent_action = policy.compute_action(agent_observation, agent, u_range=agent.u_range)
             actions.append(agent_action)
-            #print(f"action: {len(actions)}")
+            print(f"action: {len(actions)}")
 
         # Execute the environment step
         obs, rews, dones, info = env.step(actions)

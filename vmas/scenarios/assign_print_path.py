@@ -94,6 +94,8 @@ class Scenario(BaseScenario):
             if landmark.collide:  # Assume only collideable landmarks will affect the reward
                 if self.is_overlapping(agent, landmark):
                     self.rew += collision_penalty
+                    
+        return self.rew
 
     def is_overlapping(self, agent, landmark):
         # Check if agent is overlapping (colliding) with the landmark
@@ -347,7 +349,8 @@ class Scenario(BaseScenario):
         # Calculate direction perpendicular to the current direction
         current_direction = agent.goal_pos - agent.state.pos[0]
         perpendicular_direction = torch.tensor([-current_direction[1], current_direction[0]])
-        
+        direction_45_degree = (current_direction + perpendicular_direction) / torch.sqrt(torch.tensor(2.0))
+
         # Check which side is open
         if not self.is_collision(agent.state.pos[0] + perpendicular_direction, obstacle):
             print(f"perpendicular_direction, {perpendicular_direction}")
