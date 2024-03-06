@@ -48,7 +48,7 @@ def run_assign_print_path(
     # Add the line segments to the world, mannually
     for start_point, end_point in env.scenario.unprinted_segments:
             env.scenario.add_line_to_world(start_point, end_point, color=Color.GRAY)
-            env.scenario.visulalize_endpoints(start_point, end_point, color=Color.GRAY)
+            #env.scenario.visulalize_endpoints(start_point, end_point, color=Color.GRAY)
             
     env.scenario.execute_tasks_allocation()  # Allocate tasks to agents
            
@@ -71,6 +71,7 @@ def run_assign_print_path(
             
             agent_action = policy.compute_action(agent_observation, agent, u_range=agent.u_range)
             actions.append(agent_action)
+            #print(f"action: {len(actions)}")
 
         # Execute the environment step
         obs, rews, dones, info = env.step(actions)
