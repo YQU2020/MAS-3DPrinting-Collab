@@ -141,7 +141,7 @@ class Scenario(BaseScenario):
         # If there are unprinted segments and some agents are not printing, reassign tasks
         if need_reassignment and any(agent.current_line_segment is None for agent in self.agents):
             self.execute_tasks_allocation()
-            self.plan_paths_for_agents()
+            #self.plan_paths_for_agents()
     def add_landmark(self, position, color=Color.GREEN):
             landmark = Landmark(
                 name=f"landmark_{len(self.world.landmarks)}",
