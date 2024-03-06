@@ -447,7 +447,7 @@ class Scenario(BaseScenario):
                 path = self.a_star_pathfinding(agent.state.pos[0], start_point, obstacles)
                 for path_point in path:
                     print(f"Path point: {path_point}")
-                    self._world.visulalize_endpoints(path_point, path_point, color=Color.GRAY)
+                    self.visulalize_endpoints(path_point, path_point, color=Color.GRAY)
                 #print(path)
                 if path:
                     # IF a path was found, set the goal position to the next point on the path
