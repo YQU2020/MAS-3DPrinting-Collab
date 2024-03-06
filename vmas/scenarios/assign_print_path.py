@@ -468,10 +468,10 @@ class Scenario(BaseScenario):
         # Check which side is open
         if not self.is_collision(agent.state.pos[0] + perpendicular_direction, obstacle):
             print(f"perpendicular_direction, {perpendicular_direction}")
-            return direction_45_degree
+            return perpendicular_direction
         elif not self.is_collision(agent.state.pos[0] - perpendicular_direction, obstacle):
             print(f"minus perpendicular_direction, {-perpendicular_direction}")
-            return -direction_45_degree
+            return -perpendicular_direction
         else:
             # If obstacles are on both sides, return the original direction
             return current_direction
