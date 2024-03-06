@@ -141,7 +141,7 @@ class Scenario(BaseScenario):
         # If there are unprinted segments and some agents are not printing, reassign tasks
         if need_reassignment and any(agent.current_line_segment is None for agent in self.agents):
             self.execute_tasks_allocation()
-            
+            self.plan_paths_for_agents()
     def add_landmark(self, position, color=Color.GREEN):
             landmark = Landmark(
                 name=f"landmark_{len(self.world.landmarks)}",
@@ -316,6 +316,7 @@ class Scenario(BaseScenario):
         while open_set:
             current = min(open_set, key=lambda x: f_score[x])
             if current == tuple(goal):
+                print("Path found!")
                 return self.reconstruct_path(came_from, tuple(goal))
 
             open_set.remove(current)
@@ -333,8 +334,9 @@ class Scenario(BaseScenario):
                         open_set.add(neighbor_tuple)
                         #print(f"neighbor_tuple: {neighbor_tuple}")
             #print(f"len(open_set): {len(open_set)}, open_set: {open_set}")
-
-        # If the open set is empty, no path was foundW
+        
+        # If the open set is empty, no path was found
+        print("No path found!")
         return []
 
     def euclidean_distance(self, point1, point2):
@@ -370,7 +372,7 @@ class Scenario(BaseScenario):
         # Tensorize the path
         return [torch.tensor(point, dtype=torch.float32) for point in total_path]
 
-    def get_neighbors(self, position, obstacles, step_size=0.5):
+    def get_neighbors(self, position, obstacles, step_size=0.01):
         # Simplified neighbor generation for explanation
         directions = [torch.tensor([step_size, 0]), torch.tensor([-step_size, 0]),
                     torch.tensor([0, step_size]), torch.tensor([0, -step_size])]
@@ -418,12 +420,34 @@ class Scenario(BaseScenario):
         for agent in self.agents:
             print(f"Planning path for agent {agent.name}")
             if agent.current_line_segment is not None:  # A new task has been assigned
+                print(f"=====================Agent {agent.name} has current task {agent.current_line_segment}.=====================")
                 start_point = agent.current_line_segment[0]
                 # Use the A* algorithm to plan a path around obstacles to reach the start point of the task
-                #print(f"Printed segments: {self.printed_segments}, Unprinted segments: {self.unprinted_segments}")
+                obstacles = self.printed_segments
+                path = self.a_star_pathfinding(agent.state.pos[0], start_point, obstacles)
+                print(f"Agent {agent.name} path: {path}")
+                for path_point in path:
+                    print(f"Path point: {path_point}")
+                    self.visulalize_endpoints(path_point, path_point, color=Color.GRAY)
+                #print(path)
+                if path:
+                    # IF a path was found, set the goal position to the next point on the path
+                    # This assumes that `path[0]` is the agent's current position and `path[1]` is the next target on the path
+                    agent.goal_pos = path[1] if len(path) > 1 else start_point
+                else:
+                    # IF no path was found, set the goal position to the start point of the task
+                    agent.goal_pos = start_point
+            else:
+                # If there is no current task, the goal position remains unchanged (may be the initialized position)
+                print(f"=====================Agent {agent.name} has no current task.=====================")
+                start_point= agent.goal_pos
+                
                 obstacles = self.printed_segments
                 #print(len(obstacles))
                 path = self.a_star_pathfinding(agent.state.pos[0], start_point, obstacles)
+                for path_point in path:
+                    print(f"Path point: {path_point}")
+                    self._world.visulalize_endpoints(path_point, path_point, color=Color.GRAY)
                 #print(path)
                 if path:
                     # IF a path was found, set the goal position to the next point on the path
@@ -456,7 +480,6 @@ class Scenario(BaseScenario):
         # Check for intersections between the agent and printed segments
         for segment in self.printed_segments:
             if self.line_circle_intersection(segment[0], segment[1], agent.state.pos[0], self.agents_radius):
-                print()
                 # If an intersection is found, handle the collision
                 # This could involve changing the agent's direction or setting a flag to trigger other responses
                 # If an obstacle is detected, adjust the direction
@@ -465,6 +488,7 @@ class Scenario(BaseScenario):
                 move_distance = min(torch.norm(new_direction), 0.03)
                 # Apply the new direction to the agent's position to avoid movement
                 agent.state.pos += new_direction * move_distance + move_distance * (segment[1] - segment[0]) # Move the agent along the line segment
+                self.plan_paths_for_agents()
                 print("Intersection detected!")
                 
                 break
