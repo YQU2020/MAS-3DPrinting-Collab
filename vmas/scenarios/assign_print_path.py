@@ -13,8 +13,8 @@ class Scenario(BaseScenario):
         self.shared_reward = kwargs.get("shared_reward", False)
         self.shaping_factor = 100  # Shaping factor for the reward functionW
         self.num_agents = 2  # M=2
-        self.agents_radius = 0.03
-        self.landmarks_radius = 0.03
+        self.agents_radius = 0.01
+        self.landmarks_radius = 0.01
         agent_colors = [Color.RED, Color.BLUE, Color.LIGHT_GREEN]  # Define the colors for the agents
 
         # Create agents with different colors
@@ -116,16 +116,17 @@ class Scenario(BaseScenario):
         need_reassignment = False  # Flag to indicate whether task reassignment is needed
         
         for agent in self.agents:
+            '''
             if self.check_for_collisions(agent):
                 print(f"Agent {agent.name} is avoiding collision.")
                 self.plan_paths_for_agents()
                 break
-                
+            '''    
             if agent.current_line_segment:
                 start_point, end_point = agent.current_line_segment
                 print(f"Agent {agent.name} is printing segment {agent.current_line_segment} at {agent.state.pos[0]}, goalpoint is {agent.goal_pos}.New direction: {agent.state.vel[0]}. Distance to goal: {torch.norm(agent.state.pos[0] - end_point)}")
                 
-                if agent.is_printing and torch.norm(agent.state.pos[0] - end_point) < 0.04: # Assume the radius of the agent is 0.03
+                if agent.is_printing and torch.norm(agent.state.pos[0] - end_point) < self.agents_radius + 0.01: # Assume the radius of the agent is 0.03
                     agent.is_printing = False  # Finished printing
                     agent.at_start = False  # Reset the flag
                     agent.completed_tasks.append(agent.current_line_segment)  # Add the completed task to the list
@@ -270,7 +271,6 @@ class Scenario(BaseScenario):
     def execute_tasks_allocation(self):
         
         self.assign_tasks_based_on_bids()  # Ensure task queues are up-to-date
-        
         for agent in self.agents: 
             if not agent.is_printing and agent.task_queue:
                 for task in agent.task_queue:
@@ -314,6 +314,7 @@ class Scenario(BaseScenario):
         f_score = {tuple(start): self.euclidean_distance(start, goal)}
 
         while open_set:
+            print(f"open_set: {open_set}")
             current = min(open_set, key=lambda x: f_score[x])
             if current == tuple(goal):
                 print("Path found!")
@@ -347,23 +348,6 @@ class Scenario(BaseScenario):
         # Calculate Euclidean distance
         return torch.norm(point1 - point2).item()
 
-    def calculate_new_direction(self, agent, obstacle):
-        # Calculate direction perpendicular to the current direction
-        current_direction = agent.goal_pos - agent.state.pos[0]
-        perpendicular_direction = torch.tensor([-current_direction[1], current_direction[0]])
-        direction_45_degree = (current_direction + perpendicular_direction) / torch.sqrt(torch.tensor(2.0))
-
-        # Check which side is open
-        if not self.is_collision(agent.state.pos[0] + perpendicular_direction, obstacle):
-            print(f"perpendicular_direction, {perpendicular_direction}")
-            return direction_45_degree
-        elif not self.is_collision(agent.state.pos[0] - perpendicular_direction, obstacle):
-            print(f"minus perpendicular_direction, {-perpendicular_direction}")
-            return -direction_45_degree
-        else:
-            # If obstacles are on both sides, return the original direction
-            return current_direction
-
     def reconstruct_path(self, came_from, current):
         total_path = [current]
         while current in came_from:
@@ -380,7 +364,7 @@ class Scenario(BaseScenario):
         for d in directions:
             np = position + d
             # Check if the neighbor is within the bounds and not colliding with obstacles
-            if torch.all(np <= 2.5) and torch.all(np >= -2.5):
+            if torch.all(np <= 0.5) and torch.all(np >= -0.5):
                 if not self.is_collision(np, obstacles):
                     neighbors.append(np)
         return neighbors
@@ -425,10 +409,10 @@ class Scenario(BaseScenario):
                 # Use the A* algorithm to plan a path around obstacles to reach the start point of the task
                 obstacles = self.printed_segments
                 path = self.a_star_pathfinding(agent.state.pos[0], start_point, obstacles)
-                print(f"Agent {agent.name} path: {path}")
-                for path_point in path:
-                    print(f"Path point: {path_point}")
-                    self.visulalize_endpoints(path_point, path_point, color=Color.GRAY)
+                print(f"Path finded for Agent {agent.name}!")
+                #for path_point in path:
+                #    print(f"Path point: {path_point}")
+                #    self.visulalize_endpoints(path_point, path_point, color=Color.GRAY)
                 #print(path)
                 if path:
                     # IF a path was found, set the goal position to the next point on the path
@@ -456,67 +440,6 @@ class Scenario(BaseScenario):
                 else:
                     # IF no path was found, set the goal position to the start point of the task
                     agent.goal_pos = start_point
-        
-    def calculate_new_direction(self, agent, obstacle):
-        # Calculate direction perpendicular to the current direction
-        current_direction = agent.goal_pos - agent.state.pos[0]
-        perpendicular_direction = torch.tensor([-current_direction[1], current_direction[0]])
-        
-        # Calculate 45 degree rotation by averaging the current direction and perpendicular direction
-        direction_45_degree = (current_direction + perpendicular_direction) / torch.sqrt(torch.tensor(2.0))
-        
-        # Check which side is open
-        if not self.is_collision(agent.state.pos[0] + perpendicular_direction, obstacle):
-            print(f"perpendicular_direction, {perpendicular_direction}")
-            return perpendicular_direction
-        elif not self.is_collision(agent.state.pos[0] - perpendicular_direction, obstacle):
-            print(f"minus perpendicular_direction, {-perpendicular_direction}")
-            return -perpendicular_direction
-        else:
-            # If obstacles are on both sides, return the original direction
-            return current_direction
-        
-    def check_for_collisions(self, agent):
-        # Check for intersections between the agent and printed segments
-        for segment in self.printed_segments:
-            if self.line_circle_intersection(segment[0], segment[1], agent.state.pos[0], self.agents_radius):
-                # If an intersection is found, handle the collision
-                # This could involve changing the agent's direction or setting a flag to trigger other responses
-                # If an obstacle is detected, adjust the direction
-                # Calculate the intersection point between the current movement direction and the obstacle, and determine the direction to bypass the obstacle
-                new_direction = self.calculate_new_direction(agent, segment)
-                move_distance = min(torch.norm(new_direction), 0.03)
-                # Apply the new direction to the agent's position to avoid movement
-                agent.state.pos += new_direction * move_distance + move_distance * (segment[1] - segment[0]) # Move the agent along the line segment
-                self.plan_paths_for_agents()
-                print("Intersection detected!")
-                
-                break
-
-    def line_circle_intersection(self, line_start, line_end, circle_center, circle_radius):
-        # Transform all parameters to torch.Tensor
-        line_start = torch.tensor(line_start, dtype=torch.float32)
-        line_end = torch.tensor(line_end, dtype=torch.float32)
-        circle_center = torch.tensor(circle_center, dtype=torch.float32)
-
-        # Calculate the vector from the line start to end and from the line start to the circle center
-        line_vec = line_end - line_start
-        to_start_vec = line_start - circle_center
-
-        # Use the quadratic formula to solve for the intersection points
-        a = torch.dot(line_vec, line_vec)
-        b = 2 * torch.dot(to_start_vec, line_vec)
-        c = torch.dot(to_start_vec, to_start_vec) - circle_radius ** 2
-
-        # Calculate the discriminant
-        discriminant = b ** 2 - 4 * a * c
-        if discriminant >= 0:
-            # Calculate the two possible intersection points t1 and t2
-            t1 = (-b - torch.sqrt(discriminant)) / (2 * a)
-            t2 = (-b + torch.sqrt(discriminant)) / (2 * a)
-            if 0 <= t1 <= 1 or 0 <= t2 <= 1:
-                return True  # If at least one intersection point is within the line segment, return True
-        return False
     
 class SimplePolicy:
     def compute_action(self, observation: torch.Tensor, agent: Agent, u_range: float) -> torch.Tensor:
