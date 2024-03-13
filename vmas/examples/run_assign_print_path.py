@@ -64,20 +64,56 @@ def run_assign_print_path(
                 env.scenario.execute_tasks_allocation()
             if agent.current_line_segment is not None and not agent.at_start:
                 # Remember to only use the first element of the tensor
-                if torch.norm((agent.state.pos - agent.current_line_segment[0])[0]) < 0.05: 
+                if torch.norm((agent.state.pos - agent.current_line_segment[0])[0]) < 0.01: 
                     agent.at_start = True  # agent has reached the start of the line segment
                     agent.goal_pos = agent.current_line_segment[1]  # update the goal position
                     agent.is_printing = True
             
+            need_reassignment = False
+            if env.scenario.is_agent_blocked(agent, env.scenario.printed_segments):
+                print(f"Agent {agent.name} is blocked and will attempt to find a new path.")
+                env.scenario.attempt_new_path(agent)
+            
+            if agent.current_line_segment:
+                start_point, end_point = agent.current_line_segment
+                print(f"Agent {agent.name} is printing segment {agent.current_line_segment} at {agent.state.pos[0]}, goalpoint is {agent.goal_pos}.New direction: {agent.state.vel[0]}. Distance to goal: {torch.norm(agent.state.pos[0] - end_point)}")
+
+                if agent.is_printing and torch.norm(agent.state.pos[0] - end_point) < env.scenario.agents_radius: # Assume the radius of the agent
+                    agent.is_printing = False  # Finished printing
+                    agent.at_start = False  # Reset the flag
+                    
+                    # Agent finished printing, find a new safe position
+                    safe_pos = env.scenario.find_safe_position(agent.state.pos[0], env.scenario.printed_segments)
+                    if safe_pos is not None:
+                        # If a safe position is found, update the goal position
+                        agent.goal_pos = safe_pos
+                    else:
+                        # If no safe position is found, raise an exception
+                        raise Exception("NO safe place founded!")
+                    
+                    agent.completed_tasks.append(agent.current_line_segment)  # Add the completed task to the list
+                    agent.completed_total_dis += torch.norm(start_point - end_point)
+                    
+                    env.scenario.printed_segments.append(agent.current_line_segment)  # Add the completed task to the records
+                    env.scenario.add_line_to_world(end_point, start_point, color=agent.color, collide = True)
+                    print("=================================================================")
+                    print(f"Agent {agent.name} finished segment{agent.current_line_segment}.")
+                    agent.current_line_segment = None  # erase current line segment
+                    agent.goal_pos = agent.state.pos[0]  # if no more line segments, stay at current position
+                                
+                    need_reassignment = True  # Flag that task reassignment is needed
+                    
+            agent.previus_pos = agent.state.pos
+            if need_reassignment and any(agent.current_line_segment is None for agent in env.scenario.agents):
+                env.scenario.execute_tasks_allocation()
+            
             agent_action = policy.compute_action(agent_observation, agent, u_range=agent.u_range)
             actions.append(agent_action)
-            print(f"action: {len(actions)}")
+            #print(f"action: {len(actions)}")
 
         # Execute the environment step
         obs, rews, dones, info = env.step(actions)
 
-        # Update the print path of each agent
-        env.scenario.update_trail()
         
         # check if all line segments have been printed
         all_lines_printed = all(agent.current_line_segment is None and not agent.is_printing for agent in env.world.agents)
