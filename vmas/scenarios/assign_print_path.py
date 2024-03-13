@@ -20,7 +20,7 @@ class Scenario(BaseScenario):
         # Create agents with different colors
         self.agents = []
         for i in range(self.num_agents):
-            agent = Agent(name=f"agent_{i}", u_multiplier=0.05, shape=Sphere(self.agents_radius), collide=False, color=agent_colors[i])
+            agent = Agent(name=f"agent_{i}", u_multiplier=0.1, shape=Sphere(self.agents_radius), collide=True, color=agent_colors[i])
             self.agents.append(agent)
             self._world.add_agent(agent)
             agent.is_printing = False
@@ -58,7 +58,7 @@ class Scenario(BaseScenario):
         for agent in self.world.agents:
 
             # Set a random start position for the agent
-            random_start_pos = torch.rand((1, self.world.dim_p), device=self.world.device) * 1 - 0.5
+            random_start_pos = torch.rand((1, self.world.dim_p), device=self.world.device) * 1 - 0.7
 
             agent.set_pos(random_start_pos, batch_index=env_index)     
                    
@@ -76,6 +76,7 @@ class Scenario(BaseScenario):
                     self.unprinted_segments.append((self.print_path_points[i], self.print_path_points[i+1]))
                     self.all_segments.append((self.print_path_points[i], self.print_path_points[i+1]))
                     
+        
     def reward(self, agent):
         # Initialize reward as 0
         self.rew = torch.zeros(self.world.batch_dim, device=self.world.device, dtype=torch.float32)
@@ -317,7 +318,7 @@ class Scenario(BaseScenario):
 
         return start, goal
 
-    def get_neighbors(self, position, obstacles, step_size=0.01):
+    def get_neighbors(self, position, obstacles, step_size=0.005):
         directions = [torch.tensor([step_size, 0]), torch.tensor([-step_size, 0]),
                       torch.tensor([0, step_size]), torch.tensor([0, -step_size])]
         neighbors = []
@@ -325,7 +326,7 @@ class Scenario(BaseScenario):
             neighbor_pos = position + d
             # Check if the neighbor is within the bounds and not colliding with obstacles
             if torch.all(neighbor_pos <= 0.5) and torch.all(neighbor_pos >= -0.5):
-                if not self.is_collision(neighbor_pos, obstacles):
+                if not self.is_collision(neighbor_pos, obstacles, extra_radius = self.agents_radius / 2.0):
                     neighbors.append(neighbor_pos)
         return neighbors
     
@@ -355,39 +356,70 @@ class Scenario(BaseScenario):
 
         return distance
 
-    def is_collision(self, position, obstacles):
+    def is_collision(self, position, obstacles, extra_radius=0.0):
         if not obstacles:
             print("No obstacles found.")
             return False
         for segment_start, segment_end in obstacles:
             distance = self.point_to_line_segment_distance(position[0], segment_start, segment_end)
-            if distance < self.agents_radius:  # Assume the radius of the agent is 0.03
+            if distance < self.agents_radius + extra_radius:  # Assume the radius of the agent is 0.03
                 return True
         return False
     
     def on_collision_detected(self, agent):
         # Check which endpoint of the current line segment is closer to the agent, then plan a new path
-        task = agent.current_line_segment
-        start_point, end_point = task
-        closer_endpoint = start_point if self.euclidean_distance(agent.state.pos, start_point) <= self.euclidean_distance(agent.state.pos, end_point) else end_point
-        print("Pirinted segments: ", self.printed_segments)
-        path = self.a_star_pathfinding(agent.state.pos[0], closer_endpoint, self.printed_segments)
+        current_task = agent.current_line_segment
+        start_point, end_point = current_task
+
+        # calculate a point that is closer to the agent and after the obstacle intersection
+        # instead of go straight to the end_point
+        closer_point_to_agent = agent.state.pos[0] + agent.state.vel[0] + self.landmarks_radius
+
+        # Use A* pathfinding to find a new path
+        path = self.a_star_pathfinding(agent.state.pos[0], closer_point_to_agent, self.printed_segments)
+
         if path:
-            # Update the goal position to the next point in the path
-            agent.goal_pos = path[1] if len(path) > 1 else path[0]
-            print(f"New path planned for Agent {agent.name} after collision.")
+            # if a new path is found, set the goal position to the next point on the path
+            print(f"New path found for Agent {agent.name} to avoid the obstacle.")
+            agent.goal_pos = path[1] if len(path) > 1 else path[0]  # set the next point on the path as the goal position
+            #self.visualize_path(path)  # Visualize the new path (optional)
         else:
-            print(f"No path found for Agent {agent.name} after collision.")
+            print(f"No path found for Agent {agent.name} to avoid the obstacle.")
             
-    def is_agent_blocked(self, agent, obstacles):
+    def is_agent_will_be_block(self, agent, obstacles):
         # Calculate the expected position of the agent after one step
         expected_pos = agent.state.pos + agent.state.vel
         # Check if the expected position is within the bounds and not colliding with obstacles
         return self.is_collision(expected_pos, obstacles)
+    
+    """ 
+    def is_agent_blocked(self, agent):  # calculate the movement of the agent if the agent is not moving, it is considered blocked
+        if agent.previus_pos is None:
+            return False  # If there is no previous position, the agent is not blocked
+        movement = torch.norm(agent.state.pos - agent.previus_pos)
+        print(f"Agent {agent.name} movement: {movement.item()}, state.pos: {agent.state.pos[0]}, previus_pos: {agent.previus_pos[0]}.{movement.item() < 0.5/800}")
+        # If the agent has moved less than 0.001, it is considered blocked
+        return movement.item() < 0.5/800
+    """
+    # Using vector cross product to check if the predicted position is on the same side of the obstacle as the start and end points
+    def is_agent_blocked(self, agent, obstacles):
+        # calculate the predicted position of the agent after 0.1 seconds
+        predicted_position = agent.state.pos[0] + agent.state.vel[0] * 0.1 
+        for obstacle_start, obstacle_end in obstacles:
+            # transform the tensors to numpy arrays for easier manipulation
+            obstacle_start_np = obstacle_start.numpy()
+            obstacle_end_np = obstacle_end.numpy()
+            predicted_position_np = predicted_position.numpy()
+
+            d1 = np.cross(obstacle_end_np - obstacle_start_np, predicted_position_np - obstacle_start_np)
+            d2 = np.cross(obstacle_end_np - obstacle_start_np, predicted_position_np + agent.state.vel.numpy() * 0.1 - obstacle_start_np)
+            if (d1 * d2 < 0).any():
+                # If the predicted position is on the opposite side of the obstacle as the start and end points, the agent is considered blocked
+                return True
+        return False
 
     def attempt_new_path(self, agent):
         # assumed the agent has a goal position attribute agent.goal_pos
-        print()
         new_path = self.a_star_pathfinding(agent.state.pos[0], agent.goal_pos, self.printed_segments)
         print(f"New path found for Agent {agent.name}, new path {new_path}.")
         if new_path:

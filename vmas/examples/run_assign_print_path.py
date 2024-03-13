@@ -36,7 +36,7 @@ def run_assign_print_path(
     frame_list = []  # For creating a gif
     init_time = time.time()
 
-    #obs = env.reset() # This line is not needed because the line segments are already in the world
+    obs = env.reset() # This line is not needed because the line segments are already in the world
     
     total_reward = 0
     '''
@@ -54,36 +54,54 @@ def run_assign_print_path(
            
     # Update the goal position in the observation
     for s in range(n_steps):
-
+        print(f"Step {s} of {n_steps}")
         # Loop through each agent and execute the corresponding action
         actions = []
         for agent in env.world.agents:
-            agent_observation = env.scenario.observation(agent)
-            #print(f"Agent {agent}  printing segment {agent.current_line_segment[0]}")
+            print(f"Agent {agent.name} is at {agent.state.pos[0]} and has {len(agent.path)} steps left in its path.")
+            # If there are unprinted segments, check if the agent is blocked or has encountered an obstacle
+            # If not, that means the agent is stopped and has no path needed
+            if env.scenario.unprinted_segments:
+                # Check if the agent is blocked or has encountered an obstacle
+                if (env.scenario.is_collision(agent.state.pos, env.scenario.printed_segments) or
+                    env.scenario.is_agent_will_be_block(agent, env.scenario.printed_segments)) and len(agent.path) == 0:
+                    print(f"Agent {agent.name} encounters an obstacle and will attempt to find a new path.")
+                    env.scenario.on_collision_detected(agent)
+                elif env.scenario.is_agent_blocked(agent, env.scenario.printed_segments) and len(agent.path) == 0:
+                    # IF the agent is blocked and has no path, find a new path
+                    print(f"Agent {agent.name} is blocked and will attempt to find a new path.")
+                    env.scenario.on_collision_detected(agent)
+                elif len(agent.path) > 0:
+                    # IF the agent has a path, follow it
+                    print(f"Agent {agent.name} is following its path.")
+                    # --Here can add extra code to check if the agent is moving in the right direction--
+                else:
+                    print(f"Agent {agent.name} is moving freely without the need for a new path.")
+                    # If the agent is not blocked and has no path, move freely
+                agent_observation = env.scenario.observation(agent)
+            
             if agent.current_line_segment is None:
-                env.scenario.execute_tasks_allocation()
-            if agent.current_line_segment is not None and not agent.at_start:
-                # Remember to only use the first element of the tensor
-                if torch.norm((agent.state.pos - agent.current_line_segment[0])[0]) < 0.01: 
+                env.scenario.execute_tasks_allocation()     # Allocate tasks to agents if any agent has no task
+            
+            if agent.current_line_segment is not None and not agent.at_start:       # Remember to only use the first element of the tensor
+                
+                if torch.norm((agent.state.pos - agent.current_line_segment[0])[0]) < env.scenario.agents_radius: 
+                    #print("*****************************************************************")
+                    print(f"Agent {agent.name} has reached the start of the line segment {agent.current_line_segment}.")
                     agent.at_start = True  # agent has reached the start of the line segment
                     agent.goal_pos = agent.current_line_segment[1]  # update the goal position
                     agent.is_printing = True
             
             need_reassignment = False
-            if env.scenario.is_agent_blocked(agent, env.scenario.printed_segments):
-                print(f"Agent {agent.name} is blocked and will attempt to find a new path.")
-                env.scenario.attempt_new_path(agent)
-            
+                
             if agent.current_line_segment:
                 start_point, end_point = agent.current_line_segment
-                print(f"Agent {agent.name} is printing segment {agent.current_line_segment} at {agent.state.pos[0]}, goalpoint is {agent.goal_pos}.New direction: {agent.state.vel[0]}. Distance to goal: {torch.norm(agent.state.pos[0] - end_point)}")
-
                 if agent.is_printing and torch.norm(agent.state.pos[0] - end_point) < env.scenario.agents_radius: # Assume the radius of the agent
                     agent.is_printing = False  # Finished printing
                     agent.at_start = False  # Reset the flag
                     
                     # Agent finished printing, find a new safe position
-                    safe_pos = env.scenario.find_safe_position(agent.state.pos[0], env.scenario.printed_segments)
+                    safe_pos = env.scenario.find_safe_position(agent.state.pos[0], env.scenario.all_segments)
                     if safe_pos is not None:
                         # If a safe position is found, update the goal position
                         agent.goal_pos = safe_pos
@@ -102,11 +120,12 @@ def run_assign_print_path(
                     agent.goal_pos = agent.state.pos[0]  # if no more line segments, stay at current position
                                 
                     need_reassignment = True  # Flag that task reassignment is needed
-                    
-            agent.previus_pos = agent.state.pos
+            
+            
+            agent.previus_pos = agent.state.pos.clone()
             if need_reassignment and any(agent.current_line_segment is None for agent in env.scenario.agents):
                 env.scenario.execute_tasks_allocation()
-            
+            print(f"Agent {agent.name} is printing segment {agent.current_line_segment} at {agent.state.pos[0]}, goalpoint is {agent.goal_pos}.New direction: {agent.state.vel[0]}. Distance to goal: {torch.norm(agent.state.pos[0] - end_point)}. ")
             agent_action = policy.compute_action(agent_observation, agent, u_range=agent.u_range)
             actions.append(agent_action)
             #print(f"action: {len(actions)}")
@@ -149,7 +168,7 @@ if __name__ == "__main__":
         scenario_name="assign_print_path",
         heuristic=SimplePolicy,
         n_envs=400,
-        n_steps=2000,
+        n_steps=1000,
         render=True,
         save_render=False,
     )
