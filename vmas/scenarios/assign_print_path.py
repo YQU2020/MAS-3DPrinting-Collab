@@ -458,6 +458,99 @@ class Scenario(BaseScenario):
                 return new_pos
         # If no safe position is found, return None
         return None
+    
+    def bug_algorithm(self, agent, target_pos, obstacles, scenario):
+        # Check if the agent is currently following an obstacle
+        if not agent.following_obstacle:
+            # Move directly towards the target
+            direct_movement = move_directly_towards(agent.state.pos, target_pos)
+
+            # Check for collision with any obstacle
+            collision, obstacle = self.check_collision(agent.state.pos + direct_movement, obstacles)
+            if collision:
+                # Start following the obstacle's boundary
+                agent.following_obstacle = True
+                agent.current_obstacle = obstacle
+                self.follow_boundary(agent, obstacle)
+            else:
+                # Continue moving towards the target
+                agent.state.pos += direct_movement
+        else:
+            # Continue following the obstacle's boundary
+            continue_following_boundary(agent, agent.current_obstacle, target_pos, obstacles, scenario)
+
+    def move_directly_towards(self, current_pos, target_pos):
+        # Calculate the vector towards the target
+        direction = target_pos - current_pos
+        # Normalize the direction
+        direction_norm = direction / torch.norm(direction)
+        # Define the movement step
+        step_size = 0.01
+        return direction_norm * step_size
+
+    def check_collision(self, pos, obstacles):
+        # Iterate over obstacles to check for collision
+        for obstacle in obstacles:
+            if self.is_collision(pos, obstacle):
+                return True, obstacle
+        return False, None
+        
+    def follow_boundary(self, agent, obstacles):     # When the agent encounters an obstacle, call this function to start walking along the boundary of the obstacle.
+        # Assume the obstacles is a list of line segments, each segment is represented by a start point and an end point
+        # Find the closest point on the obstacle's boundary to the agent
+        closest_point, closest_segment = None, None
+        min_distance = float('inf')
+        for segment in obstacles:
+            for point in segment:
+                distance = torch.norm(agent.state.pos - point).item()
+                if distance < min_distance:
+                    closest_point = point
+                    closest_segment = segment
+                    min_distance = distance
+        
+        # Due to the simplification of this example, I assume the agent always walks clockwise along the boundary
+        # Next point depends on the relative position and direction of the agent to the obstacle boundary
+        # Here I assume the agent always walks clockwise along the boundary
+        if closest_point is not None and closest_segment is not None:
+            next_point = closest_segment[1] if closest_point.equal(closest_segment[0]) else closest_segment[0]
+            agent.goal_pos = next_point
+
+    def continue_following_boundary(self, agent, obstacles):        # Assume this function is called when the agent is already moving along the boundary of the obstacle
+
+        # check if there is a direct path from the current position to the goal without intersecting any obstacles
+         # This function checkss if there is a direct path from the current position to the goal without intersecting any obstacles
+        direct_path_available = self.is_agent_will_be_block(agent.state.pos, agent.goal_pos, obstacles)
+
+        if direct_path_available:
+            # if a direct path exists, update the agent's goal position to move towards the final goal
+            if agent.current_line_segment is not None:
+                agent.goal_pos = agent.current_line_segment  #  update the agent's goal position to move towards the final goal
+                print("Direct path found. Agent can move towards the goal.")
+                return True
+        else:
+            # If a direct path does not exist, the agent should continue moving along the obstacle's boundary
+            print("Continuing to follow the boundary.")
+            
+            next_boundary_point = self.find_next_boundary_point(agent.state.pos, obstacles)
+            agent.goal_pos = next_boundary_point  # Update the agent's goal position to move towards the next boundary point
+            return False
+        
+    def find_next_boundary_point(self, current_position, obstacles): # To find the next boundary point, the agent needs to find the closest point on the obstacle's boundary to its current position
+        closest_point = None
+        min_distance = float('inf')
+
+        for segment in obstacles:
+            for endpoint in [segment[0], segment[1]]:
+                # calculate the distance between the agent's current position and sny endpoint
+                distance = torch.norm(current_position - endpoint)
+
+                # IF the distance is less than the minimum distance, update the closest point and the minimum distance
+                if distance < min_distance:
+                    closest_point = endpoint
+                    min_distance = distance
+        return closest_point
+
+
 
 class SimplePolicy:
     def compute_action(self, observation: torch.Tensor, agent: Agent, u_range: float) -> torch.Tensor:
