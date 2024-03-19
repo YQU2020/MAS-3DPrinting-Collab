@@ -16,6 +16,7 @@ class Scenario(BaseScenario):
         self.agents_radius = 0.01
         self.landmarks_radius = 0.01
         agent_colors = [Color.RED, Color.BLUE, Color.LIGHT_GREEN]  # Define the colors for the agents
+        self.A_star_step_size = 0.10  # Step size for A* pathfinding
 
         # Create agents with different colors
         self.agents = []
@@ -276,58 +277,51 @@ class Scenario(BaseScenario):
     
     # A* pathfinding algorithm
     def a_star_pathfinding(self, start, goal, obstacles):
-        # Make sure start and goal are rounded to two decimal places
-        start, goal = self.prepare_points(start, goal)
-        open_set = set([tuple(start)])
+        # Convert start and goal to rounded tuples to ensure consistency
+        start_key = tuple(round(x.item(), 2) for x in torch.tensor(start, dtype=torch.float32))
+        goal_key = tuple(round(x.item(), 2) for x in torch.tensor(goal, dtype=torch.float32))
+        goal_tolerance = self.A_star_step_size
+
+        # Initialize sets and dictionaries using rounded keys
+        open_set = set([start_key])
         came_from = {}
-        g_score = {tuple(start): 0}
-        f_score = {tuple(start): self.euclidean_distance(start, goal)}
+        g_score = {start_key: 0}
+        f_score = {start_key: self.euclidean_distance(torch.tensor(start_key), torch.tensor(goal_key))}
 
         while open_set:
-            current = min(open_set, key=lambda x: f_score.get(x, float('inf')))
-            if current == tuple(goal):
-                return self.reconstruct_path(came_from, current)
+            current_key = min(open_set, key=lambda x: f_score.get(x, float('inf')))
+            current_pos = torch.tensor(current_key, dtype=torch.float32)
 
-            open_set.remove(current)
-            for neighbor in self.get_neighbors(torch.tensor(current, dtype=torch.float32), obstacles):
-                neighbor_tuple = tuple([round(n, 2) for n in neighbor.tolist()])
-                tentative_g_score = g_score[current] + self.euclidean_distance(current, neighbor_tuple)
+            # Check if current position is within goal_tolerance of the goal
+            if torch.norm(current_pos - torch.tensor(goal_key), p=1) <= goal_tolerance:
+                return self.reconstruct_path(came_from, current_key)
 
-                if tentative_g_score < g_score.get(neighbor_tuple, float('inf')):
-                    came_from[neighbor_tuple] = current
-                    g_score[neighbor_tuple] = tentative_g_score
-                    f_score[neighbor_tuple] = tentative_g_score + self.euclidean_distance(neighbor_tuple, goal)
-                    open_set.add(neighbor_tuple)
-        
+            open_set.remove(current_key)
+            for neighbor in self.get_neighbors(current_pos, obstacles):
+                neighbor_key = tuple(round(n.item(), 2) for n in neighbor)
+
+                # Use neighbor_key consistently for accessing g_score and f_score
+                tentative_g_score = g_score[current_key] + self.euclidean_distance(current_pos, torch.tensor(neighbor_key))
+
+                if tentative_g_score < g_score.get(neighbor_key, float('inf')):
+                    came_from[neighbor_key] = current_key
+                    g_score[neighbor_key] = tentative_g_score
+                    f_score[neighbor_key] = tentative_g_score + self.euclidean_distance(torch.tensor(neighbor_key), torch.tensor(goal_key))
+                    open_set.add(neighbor_key)
+
         return []
 
-    def prepare_points(self, start, goal):
-        # check if start and goal are torch.Tensor types
-        if isinstance(start, torch.Tensor):
-            # make sure the elements of start and goal are rounded to two decimal places
-            start = [round(s.item(), 2) for s in start.view(-1)]
-        else:
-            # if start is not a tensor, round each element to two decimal places
-            start = [round(s, 2) for s in start]
 
-        # Do the same for the goal
-        if isinstance(goal, torch.Tensor):
-            goal = [round(g.item(), 2) for g in goal.view(-1)]
-        else:
-            goal = [round(g, 2) for g in goal]
-
-        return start, goal
-
-    def get_neighbors(self, position, obstacles, step_size=0.005):
+    def get_neighbors(self, position, obstacles, step_size=0.10):  # 增大 step_size
+        step_size = self.A_star_step_size
         directions = [torch.tensor([step_size, 0]), torch.tensor([-step_size, 0]),
                       torch.tensor([0, step_size]), torch.tensor([0, -step_size])]
         neighbors = []
         for d in directions:
             neighbor_pos = position + d
-            # Check if the neighbor is within the bounds and not colliding with obstacles
-            if torch.all(neighbor_pos <= 0.5) and torch.all(neighbor_pos >= -0.5):
-                if not self.is_collision(neighbor_pos, obstacles, extra_radius = self.agents_radius / 2.0):
-                    neighbors.append(neighbor_pos)
+            # 添加对障碍物的检查，确保邻居位置不在障碍物内
+            if not self.is_collision(neighbor_pos, obstacles):
+                neighbors.append(neighbor_pos)
         return neighbors
     
     def point_to_line_segment_distance(self, point, segment_start, segment_end):
@@ -355,16 +349,41 @@ class Scenario(BaseScenario):
         distance = np.linalg.norm(p - closest_point)
 
         return distance
+    
+    def preprocess_obstacles(self, obstacles, step_size=0.10):
+        impassable_grids = {}
+        step_size = self.A_star_step_size
+        for start, end in obstacles:
+            x_min, y_min = np.floor(np.min([start[0], end[0]]) / step_size) * step_size, np.floor(np.min([start[1], end[1]]) / step_size) * step_size
+            x_max, y_max = np.ceil(np.max([start[0], end[0]]) / step_size) * step_size, np.ceil(np.max([start[1], end[1]]) / step_size) * step_size
 
-    def is_collision(self, position, obstacles, extra_radius=0.0):
-        if not obstacles:
-            print("No obstacles found.")
-            return False
-        for segment_start, segment_end in obstacles:
-            distance = self.point_to_line_segment_distance(position[0], segment_start, segment_end)
-            if distance < self.agents_radius + extra_radius:  # Assume the radius of the agent is 0.03
-                return True
-        return False
+            x = x_min
+            while x <= x_max:
+                y = y_min
+                while y <= y_max:
+                    grid_key = (round(x, 2), round(y, 2))
+                    impassable_grids[grid_key] = True
+                    y += step_size
+                x += step_size
+                
+        return impassable_grids
+
+    
+    def is_collision(self, position, obstacles):
+        obstacle_hash = self.preprocess_obstacles(obstacles, self.A_star_step_size)
+        if not isinstance(position, torch.Tensor):
+            position = torch.tensor(position)
+        if position.dim() > 1:
+            position = position.view(-1)
+
+        # Convert position to grid coordinates
+        grid_x, grid_y = round(position[0].item() / self.A_star_step_size, 2), round(position[1].item() / self.A_star_step_size, 2)
+        grid_key = (grid_x, grid_y)
+
+        # Check the spatial hash map for collision
+        return obstacle_hash.get(grid_key, False)
+
+
     
     def on_collision_detected(self, agent):
         # Check which endpoint of the current line segment is closer to the agent, then plan a new path
@@ -392,15 +411,6 @@ class Scenario(BaseScenario):
         # Check if the expected position is within the bounds and not colliding with obstacles
         return self.is_collision(expected_pos, obstacles)
     
-    """ 
-    def is_agent_blocked(self, agent):  # calculate the movement of the agent if the agent is not moving, it is considered blocked
-        if agent.previus_pos is None:
-            return False  # If there is no previous position, the agent is not blocked
-        movement = torch.norm(agent.state.pos - agent.previus_pos)
-        print(f"Agent {agent.name} movement: {movement.item()}, state.pos: {agent.state.pos[0]}, previus_pos: {agent.previus_pos[0]}.{movement.item() < 0.5/800}")
-        # If the agent has moved less than 0.001, it is considered blocked
-        return movement.item() < 0.5/800
-    """
     # Using vector cross product to check if the predicted position is on the same side of the obstacle as the start and end points
     def is_agent_blocked(self, agent, obstacles):
         # calculate the predicted position of the agent after 0.1 seconds
@@ -446,7 +456,8 @@ class Scenario(BaseScenario):
             
     # Find a safe position after finishing printing, 
     # to avoid collision with segments printed by itself
-    def find_safe_position(self, current_pos, obstacles, step_size=0.05, max_attempts=20):
+    def find_safe_position(self, current_pos, obstacles, step_size=0.10, max_attempts=20):
+        step_size = self.A_star_step_size
         directions = [torch.tensor([step_size, 0]), torch.tensor([-step_size, 0]),
                     torch.tensor([0, step_size]), torch.tensor([0, -step_size])]
         for _ in range(max_attempts):
