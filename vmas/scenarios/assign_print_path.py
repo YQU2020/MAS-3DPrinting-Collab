@@ -312,14 +312,14 @@ class Scenario(BaseScenario):
         return []
 
 
-    def get_neighbors(self, position, obstacles, step_size=0.10):  # 增大 step_size
+    def get_neighbors(self, position, obstacles, step_size=0.10):  # Enlarge step_size
         step_size = self.A_star_step_size
         directions = [torch.tensor([step_size, 0]), torch.tensor([-step_size, 0]),
                       torch.tensor([0, step_size]), torch.tensor([0, -step_size])]
         neighbors = []
         for d in directions:
             neighbor_pos = position + d
-            # 添加对障碍物的检查，确保邻居位置不在障碍物内
+            # Add a check for obstacles to ensure the neighbor position is not inside an obstacle
             if not self.is_collision(neighbor_pos, obstacles):
                 neighbors.append(neighbor_pos)
         return neighbors

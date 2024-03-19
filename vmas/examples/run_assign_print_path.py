@@ -1,3 +1,11 @@
+import os, sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.dirname(current_dir)
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+sys.path.append('D:\\VMAS_yqu_implementation') # Add the abstract path of the VMAS implementation HERE
+    
+from vmas.scenarios.assign_print_path import Scenario, SimplePolicy
 import time
 from typing import Type
 
@@ -5,7 +13,7 @@ import torch
 from vmas import make_env
 from vmas.simulator.heuristic_policy import BaseHeuristicPolicy, RandomPolicy
 from vmas.simulator.utils import save_video, Color
-from vmas.scenarios.assign_print_path import Scenario, SimplePolicy
+
 
 def run_assign_print_path(
     scenario_name: str,
@@ -63,7 +71,7 @@ def run_assign_print_path(
             # If not, that means the agent is stopped and has no path needed
             if env.scenario.unprinted_segments:
                 # Check if the agent is blocked or has encountered an obstacle
-                if (env.scenario.is_collision(agent.state.pos, env.scenario.printed_segments) or
+                if (env.scenario.is_collision(agent.state.pos[0], env.scenario.printed_segments) or
                     env.scenario.is_agent_will_be_block(agent, env.scenario.printed_segments)) and len(agent.path) == 0:
                     print(f"Agent {agent.name} encounters an obstacle and will attempt to find a new path.")
                     env.scenario.on_collision_detected(agent)
