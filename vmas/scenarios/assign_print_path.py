@@ -21,7 +21,7 @@ class Scenario(BaseScenario):
         # Create agents with different colors
         self.agents = []
         for i in range(self.num_agents):
-            agent = Agent(name=f"agent_{i}", u_multiplier=0.05, shape=Sphere(self.agents_radius), collide=True, color=agent_colors[i])
+            agent = Agent(name=f"agent_{i}", u_multiplier=0.05, shape=Sphere(self.agents_radius), collide=False, color=agent_colors[i])
             self.agents.append(agent)
             self._world.add_agent(agent)
             agent.is_printing = False
@@ -45,9 +45,6 @@ class Scenario(BaseScenario):
         self.all_segments = []
         # visualize in run_assign_print_path.py! 
         
-        # Create a new print path, complex shape, hard-coded
-        #self.print_path_points = self.create_complex_print_path(20)
-        
         # Read the print path from a CSV file (200_coordinates.csv)
         current_directory = os.path.dirname(__file__)
         csv_file_path = os.path.join(current_directory, "../scenarios/house_floor_plan.csv")
@@ -59,7 +56,7 @@ class Scenario(BaseScenario):
         for agent in self.world.agents:
 
             # Set a random start position for the agent
-            random_start_pos = torch.rand((1, self.world.dim_p), device=self.world.device) * 1 - 0.7
+            random_start_pos = torch.rand((1, self.world.dim_p), device=self.world.device) * 1 - 0.8
 
             agent.set_pos(random_start_pos, batch_index=env_index)     
                    
@@ -79,8 +76,27 @@ class Scenario(BaseScenario):
                     
         
     def reward(self, agent: Agent):
-        distance_to_goal = torch.norm(agent.state.pos - agent.goal_pos)
-        return -distance_to_goal.unsqueeze(0)
+        self.rew = torch.zeros(self.world.batch_dim, device=self.world.device, dtype=torch.float32)
+
+        # Calculate distance to the goal and give reward
+        if agent.goal is not None:  # Make sure the agent has a goal
+            dist_to_goal = torch.linalg.vector_norm(agent.state.pos - agent.goal.state.pos, dim=1)
+            agent_shaping = dist_to_goal * self.shaping_factor
+            self.rew += agent.global_shaping - agent_shaping
+            agent.global_shaping = agent_shaping
+
+        else:
+            distance_to_goal = torch.norm(agent.state.pos - agent.goal_pos)
+            self.rew -= distance_to_goal.unsqueeze(0)
+
+        # Collision penalty
+        collision_penalty = -5.0
+        for landmark in self.world.landmarks:
+            if landmark.collide:  # Assume only collideable landmarks will affect the reward
+                if self.is_overlapping(agent, landmark):
+                    self.rew += collision_penalty
+                    
+            return self.rew
 
 
     def is_overlapping(self, agent, landmark):
@@ -230,7 +246,7 @@ class Scenario(BaseScenario):
 
     def calculate_and_set_path_to_task_start(self, agent, task):
         start_point_of_task = task[0]
-        path_to_task_start = self.a_star_pathfinding(agent.state.pos[0], start_point_of_task, self.all_segments)
+        path_to_task_start = self.a_star_pathfinding(agent.state.pos[0], start_point_of_task, self.printed_segments)
         
         if path_to_task_start:
             agent.path = path_to_task_start
@@ -314,14 +330,14 @@ class Scenario(BaseScenario):
                 neighbor_key = tuple(round(n.item(), 2) for n in neighbor)
 
                 # Use neighbor_key consistently for accessing g_score and f_score
-                tentative_g_score = g_score[current_key] + self.euclidean_distance(current_pos, torch.tensor(neighbor_key))
+                tentative_g_score = g_score[current_key] + self.manhattan_distance(current_pos, torch.tensor(neighbor_key))
 
                 if tentative_g_score < g_score.get(neighbor_key, float('inf')):
                     came_from[neighbor_key] = current_key
                     g_score[neighbor_key] = tentative_g_score
-                    f_score[neighbor_key] = tentative_g_score + self.euclidean_distance(torch.tensor(neighbor_key), torch.tensor(goal_key))
+                    f_score[neighbor_key] = tentative_g_score + self.manhattan_distance(torch.tensor(neighbor_key), torch.tensor(goal_key))
                     open_set.add(neighbor_key)
-            print(f"Open set: {open_set}, came from: {came_from}, g_score: {g_score}, f_score: {f_score}")
+            #print(f"Open set: {open_set}, came from: {came_from}, g_score: {g_score}, f_score: {f_score}")
         return []
 
 
@@ -419,11 +435,11 @@ class Scenario(BaseScenario):
         closer_point_to_agent = agent.state.pos[0] + agent.state.vel[0] + self.landmarks_radius
 
         # Use A* pathfinding to find a new path
-        path = self.a_star_pathfinding(agent.state.pos[0], closer_point_to_agent, self.all_segments)
-        print(f"Path is {path}.")
+        path = self.a_star_pathfinding(agent.state.pos[0], closer_point_to_agent, self.printed_segments)
+        #print(f"Path is {path}.")
         if path:
             # if a new path is found, set the goal position to the next point on the path
-            print(f"New path found for Agent {agent.name} to avoid the obstacle.")
+            #print(f"New path found for Agent {agent.name} to avoid the obstacle.")
             agent.goal_pos = path[1] if len(path) > 1 else path[0]  # set the next point on the path as the goal position
             #self.visualize_path(path)  # Visualize the new path (optional)
         else:
@@ -474,7 +490,7 @@ class Scenario(BaseScenario):
 
     def attempt_new_path(self, agent):
         # assumed the agent has a goal position attribute agent.goal_pos
-        new_path = self.a_star_pathfinding(agent.state.pos[0], agent.goal_pos, self.all_segments)
+        new_path = self.a_star_pathfinding(agent.state.pos[0], agent.goal_pos, self.printed_segments)
         print(f"New path found for Agent {agent.name}, new path {new_path}.")
         if new_path:
             print(f"Path is {new_path}.")
@@ -513,101 +529,6 @@ class Scenario(BaseScenario):
                 return new_pos
         # If no safe position is found, return None
         return None
-    
-    
-    ############################# Bug Algorithm ################################
-    def bug_algorithm(self, agent, target_pos, obstacles, scenario):
-        # Check if the agent is currently following an obstacle
-        if not agent.following_obstacle:
-            # Move directly towards the target
-            direct_movement = move_directly_towards(agent.state.pos, target_pos)
-
-            # Check for collision with any obstacle
-            collision, obstacle = self.check_collision(agent.state.pos + direct_movement, obstacles)
-            if collision:
-                # Start following the obstacle's boundary
-                agent.following_obstacle = True
-                agent.current_obstacle = obstacle
-                self.follow_boundary(agent, obstacle)
-            else:
-                # Continue moving towards the target
-                agent.state.pos += direct_movement
-        else:
-            # Continue following the obstacle's boundary
-            continue_following_boundary(agent, agent.current_obstacle, target_pos, obstacles, scenario)
-
-    def move_directly_towards(self, current_pos, target_pos):
-        # Calculate the vector towards the target
-        direction = target_pos - current_pos
-        # Normalize the direction
-        direction_norm = direction / torch.norm(direction)
-        # Define the movement step
-        step_size = 0.01
-        return direction_norm * step_size
-
-    def check_collision(self, pos, obstacles):
-        # Iterate over obstacles to check for collision
-        for obstacle in obstacles:
-            if self.is_collision(pos, obstacle):
-                return True, obstacle
-        return False, None
-        
-    def follow_boundary(self, agent, obstacles):     # When the agent encounters an obstacle, call this function to start walking along the boundary of the obstacle.
-        # Assume the obstacles is a list of line segments, each segment is represented by a start point and an end point
-        # Find the closest point on the obstacle's boundary to the agent
-        closest_point, closest_segment = None, None
-        min_distance = float('inf')
-        for segment in obstacles:
-            for point in segment:
-                distance = torch.norm(agent.state.pos - point).item()
-                if distance < min_distance:
-                    closest_point = point
-                    closest_segment = segment
-                    min_distance = distance
-        
-        # Due to the simplification of this example, I assume the agent always walks clockwise along the boundary
-        # Next point depends on the relative position and direction of the agent to the obstacle boundary
-        # Here I assume the agent always walks clockwise along the boundary
-        if closest_point is not None and closest_segment is not None:
-            next_point = closest_segment[1] if closest_point.equal(closest_segment[0]) else closest_segment[0]
-            agent.goal_pos = next_point
-
-    def continue_following_boundary(self, agent, obstacles):        # Assume this function is called when the agent is already moving along the boundary of the obstacle
-
-        # check if there is a direct path from the current position to the goal without intersecting any obstacles
-         # This function checkss if there is a direct path from the current position to the goal without intersecting any obstacles
-        direct_path_available = self.is_agent_will_be_block(agent.state.pos, agent.goal_pos, obstacles)
-
-        if direct_path_available:
-            # if a direct path exists, update the agent's goal position to move towards the final goal
-            if agent.current_line_segment is not None:
-                agent.goal_pos = agent.current_line_segment  #  update the agent's goal position to move towards the final goal
-                print("Direct path found. Agent can move towards the goal.")
-                return True
-        else:
-            # If a direct path does not exist, the agent should continue moving along the obstacle's boundary
-            print("Continuing to follow the boundary.")
-            
-            next_boundary_point = self.find_next_boundary_point(agent.state.pos, obstacles)
-            agent.goal_pos = next_boundary_point  # Update the agent's goal position to move towards the next boundary point
-            return False
-        
-    def find_next_boundary_point(self, current_position, obstacles): # To find the next boundary point, the agent needs to find the closest point on the obstacle's boundary to its current position
-        closest_point = None
-        min_distance = float('inf')
-
-        for segment in obstacles:
-            for endpoint in [segment[0], segment[1]]:
-                # calculate the distance between the agent's current position and sny endpoint
-                distance = torch.norm(current_position - endpoint)
-
-                # IF the distance is less than the minimum distance, update the closest point and the minimum distance
-                if distance < min_distance:
-                    closest_point = endpoint
-                    min_distance = distance
-        return closest_point
-
-
 
 class SimplePolicy:
     def __init__(self, scenario: Scenario):
@@ -658,13 +579,14 @@ class SimplePolicy:
         else:
             # If there is no current task, the goal position remains unchanged (may be the initialized position)
             goal_pos = agent.state.pos
+            
         if len(agent.path) > 0:
             goal_pos = agent.path.pop(0)  
+            
         vector_to_goal = goal_pos - agent.state.pos  # Vector to the target position
         
         # Normalize the direction vector
         norm_direction_to_goal = vector_to_goal / torch.clamp(torch.norm(vector_to_goal, dim=1, keepdim=True), min=1e-6)
-        # Compute the action
         action = norm_direction_to_goal * u_range
         return action
 
