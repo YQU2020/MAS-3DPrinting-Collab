@@ -21,7 +21,7 @@ class Scenario(BaseScenario):
         # Create agents with different colors
         self.agents = []
         for i in range(self.num_agents):
-            agent = Agent(name=f"agent_{i}", u_multiplier=0.1, shape=Sphere(self.agents_radius), collide=True, color=agent_colors[i])
+            agent = Agent(name=f"agent_{i}", u_multiplier=0.05, shape=Sphere(self.agents_radius), collide=True, color=agent_colors[i])
             self.agents.append(agent)
             self._world.add_agent(agent)
             agent.is_printing = False
@@ -78,29 +78,10 @@ class Scenario(BaseScenario):
                     self.all_segments.append((self.print_path_points[i], self.print_path_points[i+1]))
                     
         
-    def reward(self, agent):
-        # Initialize reward as 0
-        self.rew = torch.zeros(self.world.batch_dim, device=self.world.device, dtype=torch.float32)
-        
-        # Calculate distance to the goal and give reward
-        if agent.goal is not None:  # Make sure the agent has a goal
-            dist_to_goal = torch.linalg.vector_norm(agent.state.pos - agent.goal.state.pos, dim=1)
-            agent_shaping = dist_to_goal * self.shaping_factor
-            self.rew += agent.global_shaping - agent_shaping
-            agent.global_shaping = agent_shaping
-        
-        else:
-            distance_to_goal = torch.norm(agent.state.pos - agent.goal_pos)
-            self.rew -= distance_to_goal.unsqueeze(0)
+    def reward(self, agent: Agent):
+        distance_to_goal = torch.norm(agent.state.pos - agent.goal_pos)
+        return -distance_to_goal.unsqueeze(0)
 
-        # Collision penalty
-        collision_penalty = -10
-        for landmark in self.world.landmarks:
-            if landmark.collide:  # Assume only collideable landmarks will affect the reward
-                if self.is_overlapping(agent, landmark):
-                    self.rew += collision_penalty
-                    
-        return self.rew
 
     def is_overlapping(self, agent, landmark):
         # Check if agent is overlapping (colliding) with the landmark
@@ -224,37 +205,63 @@ class Scenario(BaseScenario):
                 self.agents[agent_idx].task_queue.append(agent_task)
                     
     def execute_tasks_allocation(self):
-        self.assign_tasks_based_on_bids()  # Ensure task queues are up-to-date
-        for agent in self.agents: 
-            if not agent.is_printing and agent.task_queue:
-                for task in agent.task_queue:
-                    if not any(
-                        other_agent.is_printing and 
-                        torch.equal(other_agent.current_line_segment[0], task[0]) and
-                        torch.equal(other_agent.current_line_segment[1], task[1])
-                        for other_agent in self.agents if other_agent != agent
-                    ):
-                        agent.current_line_segment = task
-                        agent.is_printing = True
-                        index_to_remove = None
-                        for i, segment in enumerate(self.unprinted_segments):
-                            # Check if both tensors in the tuple match the target tensors
-                            if torch.all(torch.eq(segment[0], task[0])) and torch.all(torch.eq(segment[1], task[1])):
-                                index_to_remove = i
-                                break
-                        
-                        # If an item was found, remove it by index
-                        if index_to_remove is not None:
-                            self.add_line_to_world(task[0], task[1], color=Color.GREEN, collide=False)
-                            self.unprinted_segments.pop(index_to_remove)
-                            print(f"Agent {agent.name} assigned to segment {task}.")
-                        break  # Task assigned, exit loop
+        self.assign_tasks_based_on_bids()
 
-                # Update task queue after assignment
+        for agent in self.agents:
+            if not agent.is_printing and agent.task_queue:
+                task = agent.task_queue[0]  # Consider only the next task in the queue
+                if not self.is_task_being_executed_by_another_agent(task, agent):
+                    agent.current_line_segment = task
+                    agent.is_printing = True
+
+                    self.remove_task_from_unprinted(task)
+                    self.printed_segments.append(task)
+
+                    print(f"Agent {agent.name} assigned to segment {task}.")
+
+                    # Calculate path to task start; if found, update agent.path; else, set direct goal_pos
+                    self.calculate_and_set_path_to_task_start(agent, task)
+
+                # After assigning a task and potentially a path, break to avoid over-assignment
+                break
+
+        # Update the task queues considering the current task assignments
+        self.update_agents_task_queues()
+
+    def calculate_and_set_path_to_task_start(self, agent, task):
+        start_point_of_task = task[0]
+        path_to_task_start = self.a_star_pathfinding(agent.state.pos[0], start_point_of_task, self.all_segments)
+        
+        if path_to_task_start:
+            agent.path = path_to_task_start
+            agent.goal_pos = path_to_task_start[1] if len(path_to_task_start) > 1 else path_to_task_start[0]  # Next step in path
+            print(f"Path calculated for Agent {agent.name} to start of segment {task}.")
+        else:
+            print(f"No path found for Agent {agent.name}. Direct movement to {start_point_of_task}.")
+            agent.goal_pos = start_point_of_task  # Direct goal set as fallback
+
+    def is_task_being_executed_by_another_agent(self, task, current_agent):
+        for other_agent in self.agents:
+            if other_agent != current_agent and other_agent.is_printing:
+                if torch.equal(other_agent.current_line_segment[0], task[0]) and torch.equal(other_agent.current_line_segment[1], task[1]):
+                    return True
+        return False
+
+    def remove_task_from_unprinted(self, task):
+        self.unprinted_segments = [
+            seg for seg in self.unprinted_segments if not (
+                torch.all(torch.eq(seg[0], task[0])) and torch.all(torch.eq(seg[1], task[1]))
+            )
+        ]
+
+    def update_agents_task_queues(self):
+        for agent in self.agents:
+            if agent.current_line_segment is not None:
                 agent.task_queue = [
                     task for task in agent.task_queue
-                    if not operator.eq(task[0], agent.current_line_segment)  # Assuming both are tuples
+                    if not all(torch.equal(a, b) for a, b in zip(task, agent.current_line_segment))
                 ]
+
 
     # ============== Obstacle Avoidence ================
 
@@ -264,9 +271,15 @@ class Scenario(BaseScenario):
         point1 = torch.tensor(point1, dtype=torch.float32)
         point2 = torch.tensor(point2, dtype=torch.float32)
         
-        # Calculate Euclidean distance
         return torch.norm(point1 - point2).item()
     
+    # Calculate the Manhattan distance between two points
+    def manhattan_distance(self, point1, point2):
+        point1 = torch.tensor(point1, dtype=torch.float32)
+        point2 = torch.tensor(point2, dtype=torch.float32)
+        
+        return torch.sum(torch.abs(point1 - point2)).item()
+
     def reconstruct_path(self, came_from, current):
         total_path = [current]
         while current in came_from:
@@ -286,7 +299,7 @@ class Scenario(BaseScenario):
         open_set = set([start_key])
         came_from = {}
         g_score = {start_key: 0}
-        f_score = {start_key: self.euclidean_distance(torch.tensor(start_key), torch.tensor(goal_key))}
+        f_score = {start_key: self.manhattan_distance(torch.tensor(start_key), torch.tensor(goal_key))}
 
         while open_set:
             current_key = min(open_set, key=lambda x: f_score.get(x, float('inf')))
@@ -308,22 +321,30 @@ class Scenario(BaseScenario):
                     g_score[neighbor_key] = tentative_g_score
                     f_score[neighbor_key] = tentative_g_score + self.euclidean_distance(torch.tensor(neighbor_key), torch.tensor(goal_key))
                     open_set.add(neighbor_key)
-
+            print(f"Open set: {open_set}, came from: {came_from}, g_score: {g_score}, f_score: {f_score}")
         return []
 
 
     def get_neighbors(self, position, obstacles, step_size=0.10):  # Enlarge step_size
         step_size = self.A_star_step_size
         directions = [torch.tensor([step_size, 0]), torch.tensor([-step_size, 0]),
-                      torch.tensor([0, step_size]), torch.tensor([0, -step_size])]
+                    torch.tensor([0, step_size]), torch.tensor([0, -step_size])]
         neighbors = []
+
+        # Define max and min borders
+        max_border = 2.00
+        min_border = -2.00
+
         for d in directions:
             neighbor_pos = position + d
-            # Add a check for obstacles to ensure the neighbor position is not inside an obstacle
-            if not self.is_collision(neighbor_pos, obstacles):
-                neighbors.append(neighbor_pos)
+            # Check if neighbor is within the specified borders before checking for collision
+            if min_border <= neighbor_pos[0] <= max_border and min_border <= neighbor_pos[1] <= max_border:
+                # Add a check for obstacles to ensure the neighbor position is not inside an obstacle
+                if not self.is_collision(neighbor_pos, obstacles):
+                    neighbors.append(neighbor_pos)
+
         return neighbors
-    
+
     def point_to_line_segment_distance(self, point, segment_start, segment_end):
         # Convert to numpy arrays for easier manipulation
         p = point.numpy()
@@ -383,11 +404,14 @@ class Scenario(BaseScenario):
         # Check the spatial hash map for collision
         return obstacle_hash.get(grid_key, False)
 
-
     
     def on_collision_detected(self, agent):
         # Check which endpoint of the current line segment is closer to the agent, then plan a new path
         current_task = agent.current_line_segment
+        if current_task is None:
+            print(f"Agent {agent.name} does not have a current task. No collision action taken.")
+            return
+
         start_point, end_point = current_task
 
         # calculate a point that is closer to the agent and after the obstacle intersection
@@ -395,8 +419,8 @@ class Scenario(BaseScenario):
         closer_point_to_agent = agent.state.pos[0] + agent.state.vel[0] + self.landmarks_radius
 
         # Use A* pathfinding to find a new path
-        path = self.a_star_pathfinding(agent.state.pos[0], closer_point_to_agent, self.printed_segments)
-
+        path = self.a_star_pathfinding(agent.state.pos[0], closer_point_to_agent, self.all_segments)
+        print(f"Path is {path}.")
         if path:
             # if a new path is found, set the goal position to the next point on the path
             print(f"New path found for Agent {agent.name} to avoid the obstacle.")
@@ -404,33 +428,53 @@ class Scenario(BaseScenario):
             #self.visualize_path(path)  # Visualize the new path (optional)
         else:
             print(f"No path found for Agent {agent.name} to avoid the obstacle.")
+            raise Exception("No path found to avoid the obstacle.")
             
-    def is_agent_will_be_block(self, agent, obstacles):
-        # Calculate the expected position of the agent after one step
-        expected_pos = agent.state.pos + agent.state.vel
-        # Check if the expected position is within the bounds and not colliding with obstacles
-        return self.is_collision(expected_pos, obstacles)
-    
-    # Using vector cross product to check if the predicted position is on the same side of the obstacle as the start and end points
-    def is_agent_blocked(self, agent, obstacles):
-        # calculate the predicted position of the agent after 0.1 seconds
-        predicted_position = agent.state.pos[0] + agent.state.vel[0] * 0.1 
-        for obstacle_start, obstacle_end in obstacles:
-            # transform the tensors to numpy arrays for easier manipulation
-            obstacle_start_np = obstacle_start.numpy()
-            obstacle_end_np = obstacle_end.numpy()
-            predicted_position_np = predicted_position.numpy()
 
-            d1 = np.cross(obstacle_end_np - obstacle_start_np, predicted_position_np - obstacle_start_np)
-            d2 = np.cross(obstacle_end_np - obstacle_start_np, predicted_position_np + agent.state.vel.numpy() * 0.1 - obstacle_start_np)
-            if (d1 * d2 < 0).any():
-                # If the predicted position is on the opposite side of the obstacle as the start and end points, the agent is considered blocked
-                return True
-        return False
+    def is_path_obstructed(self, agent_position, goal_position, obstacles):
+        """
+        Checks if the direct path from agent_position to goal_position is obstructed by any obstacle.
+        
+        :param agent_position: Current position of the agent (tensor).
+        :param goal_position: Goal position the agent is trying to reach (tensor).
+        :param obstacles: List of obstacles, each defined by its start and end points (list of tuples of tensors).
+        :return: True if the path is obstructed by an obstacle, False otherwise.
+        """
+        # Convert tensors to numpy for easier calculations
+        agent_pos_np = agent_position.numpy()
+        goal_pos_np = goal_position.numpy()
+        
+        for obstacle in obstacles:
+            obstacle_start_np, obstacle_end_np = obstacle[0].numpy(), obstacle[1].numpy()
+
+            # Check for intersection using the line intersection formula
+            # Formula: A1x + B1y = C1 for line 1 (agent to goal), A2x + B2y = C2 for line 2 (obstacle)
+            A1 = goal_pos_np[1] - agent_pos_np[1]
+            B1 = agent_pos_np[0] - goal_pos_np[0]
+            C1 = A1 * agent_pos_np[0] + B1 * agent_pos_np[1]
+            
+            A2 = obstacle_end_np[1] - obstacle_start_np[1]
+            B2 = obstacle_start_np[0] - obstacle_end_np[0]
+            C2 = A2 * obstacle_start_np[0] + B2 * obstacle_start_np[1]
+            
+            determinant = A1 * B2 - A2 * B1
+            
+            if determinant != 0:  # Lines are not parallel
+                x_inter = (C1 * B2 - C2 * B1) / determinant
+                y_inter = (A1 * C2 - A2 * C1) / determinant
+                # Check if the intersection point is within the line segments
+                if (min(agent_pos_np[0], goal_pos_np[0]) <= x_inter <= max(agent_pos_np[0], goal_pos_np[0]) and
+                    min(agent_pos_np[1], goal_pos_np[1]) <= y_inter <= max(agent_pos_np[1], goal_pos_np[1]) and
+                    min(obstacle_start_np[0], obstacle_end_np[0]) <= x_inter <= max(obstacle_start_np[0], obstacle_end_np[0]) and
+                    min(obstacle_start_np[1], obstacle_end_np[1]) <= y_inter <= max(obstacle_start_np[1], obstacle_end_np[1])):
+                    return True  # Path is obstructed
+        
+        return False  # Path is not obstructed
+
 
     def attempt_new_path(self, agent):
         # assumed the agent has a goal position attribute agent.goal_pos
-        new_path = self.a_star_pathfinding(agent.state.pos[0], agent.goal_pos, self.printed_segments)
+        new_path = self.a_star_pathfinding(agent.state.pos[0], agent.goal_pos, self.all_segments)
         print(f"New path found for Agent {agent.name}, new path {new_path}.")
         if new_path:
             print(f"Path is {new_path}.")
@@ -470,6 +514,8 @@ class Scenario(BaseScenario):
         # If no safe position is found, return None
         return None
     
+    
+    ############################# Bug Algorithm ################################
     def bug_algorithm(self, agent, target_pos, obstacles, scenario):
         # Check if the agent is currently following an obstacle
         if not agent.following_obstacle:
@@ -564,12 +610,42 @@ class Scenario(BaseScenario):
 
 
 class SimplePolicy:
+    def __init__(self, scenario: Scenario):
+        self.scenario = scenario
     def compute_action(self, observation: torch.Tensor, agent: Agent, u_range: float) -> torch.Tensor:
+        """    
+        # If the agent is close to the start point of the line segment
+        if agent.current_line_segment and torch.norm(agent.state.pos[0] - agent.goal_pos) < 0.01:        # 0.01 is agent's radius
+            agent.is_printing = True
+            agent.goal_pos = agent.current_line_segment[1]  # Set the goal position to the end point of the line segment
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+            print(f"Agent {agent.name} is now printing the segment {agent.current_line_segment}.")
+
+        # If the agent is close to the end point of the line segment
+        if agent.is_printing and torch.norm(agent.state.pos[0] - agent.current_line_segment[1]) < 0.01:                  # 0.01 is agent's radius
+            agent.is_printing = False
+            agent.completed_tasks.append(agent.current_line_segment)  # Add the completed task to the list
+            agent.current_line_segment = None  # Remove the current line segment
+            agent.goal_pos = agent.state.pos[0]  # IF there is no more task, stop at the current position
+            print("**********************************************************************************************")
+            print(f"Agent {agent.name} is now finish printing the segment {agent.current_line_segment}.")
+
+        # If the agent has no task, stop at the current position
+        if agent.current_line_segment is None:
+            agent.goal_pos = agent.state.pos[0]
+
+        # Based on the current position and the goal position, calculate the action
+        vector_to_goal = agent.goal_pos - observation[:, :2]
+        normalized_direction = vector_to_goal / torch.clamp(torch.norm(vector_to_goal, dim=1, keepdim=True), min=1e-6)
+        action = normalized_direction * u_range
+        return action
+
+        """
         if agent.current_line_segment is not None:
             if not agent.at_start:
                 # If the agent is not at the start of the line segment, the target position is the start point
                 target_pos = agent.current_line_segment[0]  
-                if torch.norm(agent.state.pos - target_pos) < 0.04:
+                if torch.norm(agent.state.pos - target_pos) < 0.01:
                     # If the agent is close to the start point, mark it as at the start
                     agent.at_start = True  
                     agent.goal_pos = agent.current_line_segment[1]  # Update the goal position
@@ -581,10 +657,10 @@ class SimplePolicy:
             goal_pos = target_pos.unsqueeze(0) if target_pos.dim() == 1 else target_pos
         else:
             # If there is no current task, the goal position remains unchanged (may be the initialized position)
-            goal_pos = agent.goal_pos
-        
-        pos_agent = observation[:, :2]  # Agent's current position
-        vector_to_goal = goal_pos - pos_agent  # Vector to the target position
+            goal_pos = agent.state.pos
+        if len(agent.path) > 0:
+            goal_pos = agent.path.pop(0)  
+        vector_to_goal = goal_pos - agent.state.pos  # Vector to the target position
         
         # Normalize the direction vector
         norm_direction_to_goal = vector_to_goal / torch.clamp(torch.norm(vector_to_goal, dim=1, keepdim=True), min=1e-6)
