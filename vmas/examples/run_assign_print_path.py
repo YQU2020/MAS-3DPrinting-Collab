@@ -81,8 +81,7 @@ def run_assign_print_path(
             if agent.current_line_segment is None:
                 env.scenario.execute_tasks_allocation()     # Allocate tasks to agents if any agent has no task
                 
-                if not agent.at_start:       # Remember to only use the first element of the tensor
-                    
+                if not agent.at_start and agent.current_line_segment is not None:      # Remember to only use the first element of the tensor
                     if torch.norm((agent.state.pos - agent.current_line_segment[0])[0]) < env.scenario.agents_radius: 
                         print("*****************************************************************")
                         print(f"Agent {agent.name} has reached the start of the line segment {agent.current_line_segment}.")
@@ -158,7 +157,7 @@ if __name__ == "__main__":
         scenario_name="assign_print_path",
         heuristic=SimplePolicy,
         n_envs=200,
-        n_steps=2000,
+        n_steps=4000,
         render=True,
         save_render=False,
     )
