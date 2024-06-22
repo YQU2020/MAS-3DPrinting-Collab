@@ -25,6 +25,24 @@ The experimental results demonstrate significant improvements in operational tim
 - **Scalability**: Effective management of more complex tasks with increased number of robots.
 - **Efficiency**: Enhanced performance in terms of task allocation and synchronization.
 
+### Install
+
+To install the VMAS simulator, you can use pip to get the latest release:
+```bash
+pip install vmas
+```
+If you want to install the current master version (more up to date than latest release), you can do:
+```bash
+git clone https://github.com/proroklab/VectorizedMultiAgentSimulator.git
+cd VectorizedMultiAgentSimulator
+pip install -e .
+s
+
+### Run 
+
+To use the simulator, simply catch an script (from the `vmas/examples` folder)  or scenario (from the `vmas/scenarios` folder)  by passing the name of the script
+you want to simple run it by `python run_example_name.py `
+
 ## Future Work
 
 Future research aims to implement these MAS in real-world settings to validate the simulation results. Additionally, exploring advanced algorithms and integrating machine learning techniques could further refine task allocation and synchronization processes, such as providing task distribution or 3D visualization of the scenarios.
