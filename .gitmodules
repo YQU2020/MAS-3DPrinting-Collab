@@ -1,3 +1,0 @@
-[submodule "mpe_comparison/mpe"]
-	path = mpe_comparison/mpe
-	url = https://github.com/matteobettini/multiagent-particle-envs.git
