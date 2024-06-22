@@ -39,6 +39,6 @@ This project is licensed under the MIT License.
 
 ## References
 
-For more detailed information, please refer to the [thesis document] and the [source code repository](https://github.com/YQU2020/MAS-3DPrinting-Collab). The scenario files is under (https://github.com/YQU2020/MAS-3DPrinting-Collab/tree/main/vmas/scenarios) and the script files (movement visualization) is under (https://github.com/YQU2020/MAS-3DPrinting-Collab/tree/main/vmas/examples)
+For more detailed information, please refer to  my thesis document and the [source code repository](https://github.com/YQU2020/MAS-3DPrinting-Collab). The scenario files is under (https://github.com/YQU2020/MAS-3DPrinting-Collab/tree/main/vmas/scenarios) and the script files (movement visualization) is under (https://github.com/YQU2020/MAS-3DPrinting-Collab/tree/main/vmas/examples)
 
 ---
