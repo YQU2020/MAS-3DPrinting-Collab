@@ -98,7 +98,7 @@ if __name__ == "__main__":
         scenario_name="double_agent_trails_lines",
         heuristic=SimplePolicy,
         n_envs=1,
-        n_steps=40,
+        n_steps=400,
         render=True,
         save_render=False,
     )
